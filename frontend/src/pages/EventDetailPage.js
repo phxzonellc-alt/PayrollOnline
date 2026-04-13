@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X } from 'lucide-react';
+import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X, Eye, Edit3 } from 'lucide-react';
 
 const DAYS = [1,2,3,4,5,6,7,8,9,10];
 
@@ -31,6 +31,8 @@ export default function EventDetailPage() {
   const [newEmp, setNewEmp] = useState({ name: '', dept_emp_num: '', rate1: '', rate2: '', special_rate: '' });
   const [editingEmp, setEditingEmp] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [dayViewMode, setDayViewMode] = useState('input');
+  const [dailyStatement, setDailyStatement] = useState(null);
 
   const loadEvent = useCallback(async () => {
     try {
@@ -62,17 +64,28 @@ export default function EventDetailPage() {
     } catch { toast.error('Failed to load summary'); }
   }, [id]);
 
+  const loadDailyStatement = useCallback(async (day) => {
+    try {
+      const res = await api.get(`/events/${id}/daily-statement/${day}`);
+      setDailyStatement(res.data);
+    } catch { toast.error('Failed to load daily statement'); }
+  }, [id]);
+
   useEffect(() => {
     Promise.all([loadEvent(), loadEmployees()]).finally(() => setLoading(false));
   }, [loadEvent, loadEmployees]);
 
   useEffect(() => {
     if (activeTab.startsWith('day-')) {
-      loadTimeEntries(parseInt(activeTab.split('-')[1]));
+      const dayNum = parseInt(activeTab.split('-')[1]);
+      loadTimeEntries(dayNum);
+      if (dayViewMode === 'statement') {
+        loadDailyStatement(dayNum);
+      }
     } else if (activeTab === 'summary') {
       loadSummary();
     }
-  }, [activeTab, loadTimeEntries, loadSummary]);
+  }, [activeTab, loadTimeEntries, loadSummary, loadDailyStatement, dayViewMode]);
 
   const saveEvent = async () => {
     setSaving(true);
@@ -353,117 +366,218 @@ export default function EventDetailPage() {
     </div>
   );
 
+  const renderDailyStatement = (dayNum) => {
+    if (!dailyStatement || dailyStatement.day !== dayNum) return <p className="text-muted-foreground text-sm p-4">Loading statement...</p>;
+    const emps = dailyStatement.employees || [];
+    const stFp = dailyStatement.fund_pct, stBp = dailyStatement.benefit_pct, stDp = dailyStatement.deduction_pct;
+    return (
+      <div className="overflow-x-auto border border-border">
+        <table className="payroll-table w-full border-collapse">
+          <thead>
+            <tr>
+              <th className="text-left w-10">#</th>
+              <th className="text-left">Employee</th>
+              <th className="text-left">Dept/Emp #</th>
+              <th className="text-right">Hrly Rate</th>
+              <th className="text-right">S.T. Hrs</th>
+              <th className="text-right">O.T. Hrs</th>
+              <th className="text-right">D.T. Hrs</th>
+              <th className="text-right">Special Rate</th>
+              <th className="text-right">SR Hrs</th>
+              <th className="text-right">Special Tot</th>
+              <th className="text-right">Total Hours</th>
+              <th className="text-right">Benefit ({(stBp*100).toFixed(0)}%)</th>
+              <th className="text-right">Fund ({(stFp*100).toFixed(0)}%)</th>
+              <th className="text-right">Deduct ({(stDp*100).toFixed(0)}%)</th>
+              <th className="text-right">Gross Salary</th>
+            </tr>
+          </thead>
+          <tbody>
+            {emps.map((emp, i) => {
+              const hasData = emp.total_hours > 0 || emp.sr_hours > 0;
+              if (!hasData) return null;
+              return (
+                <tr key={emp.employee_id} className={i%2===0?'':'bg-muted/30'}>
+                  <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
+                  <td className="text-sm font-medium">{emp.name}</td>
+                  <td className="text-xs text-muted-foreground">{emp.dept_emp_num}</td>
+                  <td className="font-mono text-xs text-right">{emp.hrly_rate?.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">{emp.st_hrs > 0 ? emp.st_hrs.toFixed(1) : '-'}</td>
+                  <td className="font-mono text-xs text-right">{emp.ot_hrs > 0 ? emp.ot_hrs.toFixed(1) : '-'}</td>
+                  <td className="font-mono text-xs text-right">{emp.dt_hrs > 0 ? emp.dt_hrs.toFixed(1) : '-'}</td>
+                  <td className="font-mono text-xs text-right">{emp.special_rate > 0 ? emp.special_rate.toFixed(2) : '-'}</td>
+                  <td className="font-mono text-xs text-right">{emp.sr_hours > 0 ? emp.sr_hours.toFixed(1) : '-'}</td>
+                  <td className="font-mono text-xs text-right">{emp.special_tot > 0 ? emp.special_tot.toFixed(2) : '-'}</td>
+                  <td className="font-mono text-xs text-right font-semibold">{emp.total_hours.toFixed(1)}</td>
+                  <td className="font-mono text-xs text-right">{emp.benefit_co.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">{emp.fund_co.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">{emp.deduction.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right font-bold">{emp.gross.toFixed(2)}</td>
+                </tr>
+              );
+            })}
+            {emps.filter(e => e.total_hours > 0 || e.sr_hours > 0).length > 0 && (
+              <tr className="total-row">
+                <td></td><td className="font-semibold">TOTALS</td><td></td><td></td>
+                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.st_hrs,0).toFixed(1)}</td>
+                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.ot_hrs,0).toFixed(1)}</td>
+                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.dt_hrs,0).toFixed(1)}</td>
+                <td></td>
+                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.sr_hours,0).toFixed(1)}</td>
+                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.special_tot,0).toFixed(2)}</td>
+                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.total_hours,0).toFixed(1)}</td>
+                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.benefit_co,0).toFixed(2)}</td>
+                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.fund_co,0).toFixed(2)}</td>
+                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.deduction,0).toFixed(2)}</td>
+                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.gross,0).toFixed(2)}</td>
+              </tr>
+            )}
+            {emps.filter(e => e.total_hours > 0 || e.sr_hours > 0).length === 0 && (
+              <tr><td colSpan={15} className="text-center text-muted-foreground text-sm py-6">No hours entered for this day.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   const renderDayTab = (dayNum) => {
     const getVal = (empId, field) => timeEntries[empId]?.[field] || 0;
     const hourFields = ['st_r1','ot_r1','dt_r1','st_r2','ot_r2','dt_r2','sr_hours'];
+    const isStatement = dayViewMode === 'statement';
     return (
       <div className="p-4">
         <div className="flex items-center justify-between mb-3">
-          <div>
-            <p className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">
-              Day {dayNum} {event.days?.[dayNum]?.date ? `- ${event.days[dayNum].date}` : ''}
-            </p>
-            {event.notes?.[dayNum] && <p className="text-xs text-muted-foreground mt-1">{event.notes[dayNum]}</p>}
+          <div className="flex items-center gap-3">
+            <div>
+              <p className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">
+                Day {dayNum} {event.days?.[dayNum]?.date ? `- ${event.days[dayNum].date}` : ''}
+              </p>
+              {event.notes?.[dayNum] && <p className="text-xs text-muted-foreground mt-1">{event.notes[dayNum]}</p>}
+            </div>
+            <div className="flex border border-border rounded-sm overflow-hidden ml-4">
+              <button
+                onClick={() => { setDayViewMode('input'); }}
+                className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider transition-colors ${!isStatement ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                data-testid="day-mode-input"
+              >
+                <Edit3 className="h-3 w-3 inline mr-1" />Input
+              </button>
+              <button
+                onClick={() => { setDayViewMode('statement'); loadDailyStatement(dayNum); }}
+                className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider transition-colors ${isStatement ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                data-testid="day-mode-statement"
+              >
+                <Eye className="h-3 w-3 inline mr-1" />Statement
+              </button>
+            </div>
           </div>
-          <Button onClick={saveDay} disabled={saving} className="rounded-sm gap-2" data-testid="save-day-button">
-            <Save className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Day'}
-          </Button>
+          {!isStatement && (
+            <Button onClick={saveDay} disabled={saving} className="rounded-sm gap-2" data-testid="save-day-button">
+              <Save className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Day'}
+            </Button>
+          )}
         </div>
-        <div className="overflow-x-auto border border-border">
-          <table className="payroll-table w-full border-collapse">
-            <thead>
-              <tr>
-                <th className="text-left">#</th>
-                <th className="text-left">Employee</th>
-                <th className="text-left">Dept</th>
-                <th className="text-center" colSpan={3}>Rate 1 Hours</th>
-                <th className="text-center" colSpan={3}>Rate 2 Hours</th>
-                <th>SR</th>
-                <th>HRS</th>
-                <th>Gross</th>
-                <th>Fund</th>
-                <th>Benefit</th>
-                <th>Deduct</th>
-              </tr>
-              <tr>
-                <th></th><th></th><th></th>
-                <th>ST</th><th>OT</th><th>DT</th>
-                <th>ST</th><th>OT</th><th>DT</th>
-                <th>Hrs</th><th></th><th></th><th></th><th></th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map((emp, i) => {
-                const s1=getVal(emp.id,'st_r1'), o1=getVal(emp.id,'ot_r1'), d1=getVal(emp.id,'dt_r1');
-                const s2=getVal(emp.id,'st_r2'), o2=getVal(emp.id,'ot_r2'), d2=getVal(emp.id,'dt_r2');
-                const sr=getVal(emp.id,'sr_hours');
-                const hrs = s1+o1+d1+s2+o2+d2;
-                const gross = calcGross(emp.rate1||0, emp.rate2||0, emp.special_rate||0, s1,o1,d1,s2,o2,d2,sr);
-                return (
-                  <tr key={emp.id} className={i%2===0?'':'bg-muted/30'}>
-                    <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
-                    <td className="text-sm font-medium max-w-[140px] truncate">{emp.name}</td>
-                    <td className="text-xs text-muted-foreground">{emp.dept_emp_num}</td>
-                    {hourFields.map(f => (
-                      <td key={f} className="p-0">
-                        <input type="number" step="0.5" min="0" value={getVal(emp.id,f) || ''}
-                          onChange={e => updateHour(emp.id, f, e.target.value)}
-                          data-testid={`entry-${emp.id}-${f}`}
-                          placeholder="0" />
-                      </td>
-                    ))}
-                    <td className="calc-cell font-mono text-xs">{hrs.toFixed(1)}</td>
-                    <td className="calc-cell font-mono text-xs font-semibold">{gross.toFixed(2)}</td>
-                    <td className="calc-cell font-mono text-xs">{(fp*gross).toFixed(2)}</td>
-                    <td className="calc-cell font-mono text-xs">{(bp*gross).toFixed(2)}</td>
-                    <td className="calc-cell font-mono text-xs">{(dp*gross).toFixed(2)}</td>
+
+        {isStatement ? renderDailyStatement(dayNum) : (
+          <>
+            <div className="overflow-x-auto border border-border">
+              <table className="payroll-table w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="text-left">#</th>
+                    <th className="text-left">Employee</th>
+                    <th className="text-left">Dept</th>
+                    <th className="text-center" colSpan={3}>Rate 1 Hours</th>
+                    <th className="text-center" colSpan={3}>Rate 2 Hours</th>
+                    <th>SR</th>
+                    <th>HRS</th>
+                    <th>Gross</th>
+                    <th>Fund</th>
+                    <th>Benefit</th>
+                    <th>Deduct</th>
                   </tr>
-                );
-              })}
-              {employees.length > 0 && (
-                <tr className="total-row">
-                  <td></td><td className="font-semibold">TOTALS</td><td></td>
-                  {hourFields.map(f => {
-                    const total = employees.reduce((sum, emp) => sum + (timeEntries[emp.id]?.[f] || 0), 0);
-                    return <td key={f} className="font-mono text-xs text-right font-bold">{total.toFixed(1)}</td>;
+                  <tr>
+                    <th></th><th></th><th></th>
+                    <th>ST</th><th>OT</th><th>DT</th>
+                    <th>ST</th><th>OT</th><th>DT</th>
+                    <th>Hrs</th><th></th><th></th><th></th><th></th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employees.map((emp, i) => {
+                    const s1=getVal(emp.id,'st_r1'), o1=getVal(emp.id,'ot_r1'), d1=getVal(emp.id,'dt_r1');
+                    const s2=getVal(emp.id,'st_r2'), o2=getVal(emp.id,'ot_r2'), d2=getVal(emp.id,'dt_r2');
+                    const sr=getVal(emp.id,'sr_hours');
+                    const hrs = s1+o1+d1+s2+o2+d2;
+                    const gross = calcGross(emp.rate1||0, emp.rate2||0, emp.special_rate||0, s1,o1,d1,s2,o2,d2,sr);
+                    return (
+                      <tr key={emp.id} className={i%2===0?'':'bg-muted/30'}>
+                        <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
+                        <td className="text-sm font-medium max-w-[140px] truncate">{emp.name}</td>
+                        <td className="text-xs text-muted-foreground">{emp.dept_emp_num}</td>
+                        {hourFields.map(f => (
+                          <td key={f} className="p-0">
+                            <input type="number" step="0.5" min="0" value={getVal(emp.id,f) || ''}
+                              onChange={e => updateHour(emp.id, f, e.target.value)}
+                              data-testid={`entry-${emp.id}-${f}`}
+                              placeholder="0" />
+                          </td>
+                        ))}
+                        <td className="calc-cell font-mono text-xs">{hrs.toFixed(1)}</td>
+                        <td className="calc-cell font-mono text-xs font-semibold">{gross.toFixed(2)}</td>
+                        <td className="calc-cell font-mono text-xs">{(fp*gross).toFixed(2)}</td>
+                        <td className="calc-cell font-mono text-xs">{(bp*gross).toFixed(2)}</td>
+                        <td className="calc-cell font-mono text-xs">{(dp*gross).toFixed(2)}</td>
+                      </tr>
+                    );
                   })}
-                  <td className="font-mono text-xs text-right font-bold">
-                    {employees.reduce((s, emp) => {
-                      const te = timeEntries[emp.id] || {};
-                      return s + (te.st_r1||0)+(te.ot_r1||0)+(te.dt_r1||0)+(te.st_r2||0)+(te.ot_r2||0)+(te.dt_r2||0);
-                    }, 0).toFixed(1)}
-                  </td>
-                  <td className="font-mono text-xs text-right font-bold">
-                    {employees.reduce((s, emp) => {
-                      const te = timeEntries[emp.id] || {};
-                      return s + calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
-                    }, 0).toFixed(2)}
-                  </td>
-                  <td className="font-mono text-xs text-right font-bold">
-                    {employees.reduce((s, emp) => {
-                      const te = timeEntries[emp.id] || {};
-                      return s + fp*calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
-                    }, 0).toFixed(2)}
-                  </td>
-                  <td className="font-mono text-xs text-right font-bold">
-                    {employees.reduce((s, emp) => {
-                      const te = timeEntries[emp.id] || {};
-                      return s + bp*calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
-                    }, 0).toFixed(2)}
-                  </td>
-                  <td className="font-mono text-xs text-right font-bold">
-                    {employees.reduce((s, emp) => {
-                      const te = timeEntries[emp.id] || {};
-                      return s + dp*calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
-                    }, 0).toFixed(2)}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        {employees.length === 0 && (
-          <p className="text-sm text-muted-foreground mt-4">Add employees in the Employees tab first.</p>
+                  {employees.length > 0 && (
+                    <tr className="total-row">
+                      <td></td><td className="font-semibold">TOTALS</td><td></td>
+                      {hourFields.map(f => {
+                        const total = employees.reduce((sum, emp) => sum + (timeEntries[emp.id]?.[f] || 0), 0);
+                        return <td key={f} className="font-mono text-xs text-right font-bold">{total.toFixed(1)}</td>;
+                      })}
+                      <td className="font-mono text-xs text-right font-bold">
+                        {employees.reduce((s, emp) => {
+                          const te = timeEntries[emp.id] || {};
+                          return s + (te.st_r1||0)+(te.ot_r1||0)+(te.dt_r1||0)+(te.st_r2||0)+(te.ot_r2||0)+(te.dt_r2||0);
+                        }, 0).toFixed(1)}
+                      </td>
+                      <td className="font-mono text-xs text-right font-bold">
+                        {employees.reduce((s, emp) => {
+                          const te = timeEntries[emp.id] || {};
+                          return s + calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
+                        }, 0).toFixed(2)}
+                      </td>
+                      <td className="font-mono text-xs text-right font-bold">
+                        {employees.reduce((s, emp) => {
+                          const te = timeEntries[emp.id] || {};
+                          return s + fp*calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
+                        }, 0).toFixed(2)}
+                      </td>
+                      <td className="font-mono text-xs text-right font-bold">
+                        {employees.reduce((s, emp) => {
+                          const te = timeEntries[emp.id] || {};
+                          return s + bp*calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
+                        }, 0).toFixed(2)}
+                      </td>
+                      <td className="font-mono text-xs text-right font-bold">
+                        {employees.reduce((s, emp) => {
+                          const te = timeEntries[emp.id] || {};
+                          return s + dp*calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
+                        }, 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {employees.length === 0 && (
+              <p className="text-sm text-muted-foreground mt-4">Add employees in the Employees tab first.</p>
+            )}
+          </>
         )}
       </div>
     );
