@@ -51,9 +51,11 @@ Deduction = Deduction% * Gross (default 5%)
 - [x] Inline employee editing (pencil icon -> edit fields -> save/cancel)
 - [x] Bulk employee import from CSV/Excel
 - [x] PDF export formatted for 8.5 x 11 Letter landscape
+- [x] Read-only daily statements (Input/Statement toggle on each Day tab)
+- [x] Daily statement PDF print (per-day 8.5x11 Letter PDF)
+- [x] CSV template download for employee import
 
 ### P1 - Next
-- [ ] Read-only daily statements view (computed D1-D10 output)
 - [ ] Employee sorting/reordering via drag-and-drop
 
 ### P2 - Future
