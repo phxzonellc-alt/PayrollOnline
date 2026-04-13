@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X, Eye, Edit3, Printer } from 'lucide-react';
+import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X, Eye, Edit3, Printer, GripVertical } from 'lucide-react';
 
 const DAYS = [1,2,3,4,5,6,7,8,9,10];
 
@@ -33,6 +33,7 @@ export default function EventDetailPage() {
   const [editForm, setEditForm] = useState({});
   const [dayViewMode, setDayViewMode] = useState('input');
   const [dailyStatement, setDailyStatement] = useState(null);
+  const [dragIdx, setDragIdx] = useState(null);
 
   const loadEvent = useCallback(async () => {
     try {
@@ -152,6 +153,22 @@ export default function EventDetailPage() {
       toast.success(`Imported ${res.data.imported} employees`);
     } catch { toast.error('Import failed. Check file format (CSV/Excel with headers: Name, Dept, Rate 1, Rate 2, Special Rate)'); }
     e.target.value = '';
+  };
+
+  const handleDragStart = (idx) => { setDragIdx(idx); };
+  const handleDragOver = (e) => { e.preventDefault(); };
+  const handleDrop = async (dropIdx) => {
+    if (dragIdx === null || dragIdx === dropIdx) { setDragIdx(null); return; }
+    const updated = [...employees];
+    const [moved] = updated.splice(dragIdx, 1);
+    updated.splice(dropIdx, 0, moved);
+    setEmployees(updated);
+    setDragIdx(null);
+    try {
+      const res = await api.post(`/events/${id}/employees/reorder`, { order: updated.map(e => e.id) });
+      setEmployees(res.data);
+      toast.success('Order saved');
+    } catch { toast.error('Failed to save order'); }
   };
 
   const updateHour = (empId, field, value) => {
@@ -331,6 +348,7 @@ export default function EventDetailPage() {
         <table className="payroll-table w-full border-collapse">
           <thead>
             <tr>
+              <th className="w-6"></th>
               <th className="text-left w-10">#</th>
               <th className="text-left">Name</th>
               <th className="text-left">Dept/Emp #</th>
@@ -344,6 +362,7 @@ export default function EventDetailPage() {
             {employees.map((emp, i) => (
               editingEmp === emp.id ? (
                 <tr key={emp.id} className="bg-primary/5">
+                  <td></td>
                   <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
                   <td className="p-0"><input type="text" value={editForm.name}
                     onChange={e => setEditForm(p => ({...p, name: e.target.value}))}
@@ -374,7 +393,15 @@ export default function EventDetailPage() {
                   </td>
                 </tr>
               ) : (
-                <tr key={emp.id} className={i % 2 === 0 ? '' : 'bg-muted/30'}>
+                <tr key={emp.id}
+                  draggable
+                  onDragStart={() => handleDragStart(i)}
+                  onDragOver={handleDragOver}
+                  onDrop={() => handleDrop(i)}
+                  className={`${i % 2 === 0 ? '' : 'bg-muted/30'} ${dragIdx === i ? 'opacity-40' : ''} transition-opacity`}>
+                  <td className="cursor-grab active:cursor-grabbing px-1" data-testid={`drag-handle-${emp.id}`}>
+                    <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+                  </td>
                   <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
                   <td>{emp.name}</td>
                   <td>{emp.dept_emp_num}</td>

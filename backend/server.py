@@ -241,6 +241,22 @@ async def delete_employee(event_id: str, emp_id: str, request: Request):
     await db.time_entries.delete_many({"event_id": event_id, "employee_id": emp_id})
     return {"message": "Employee deleted"}
 
+# ---- EMPLOYEE REORDER ----
+@api_router.post("/events/{event_id}/employees/reorder")
+async def reorder_employees(event_id: str, request: Request):
+    await get_current_user(request)
+    body = await request.json()
+    order = body.get("order", [])
+    for idx, emp_id in enumerate(order):
+        await db.employees.update_one(
+            {"_id": ObjectId(emp_id), "event_id": event_id},
+            {"$set": {"sort_order": idx + 1}}
+        )
+    employees = await db.employees.find({"event_id": event_id}).sort("sort_order", 1).to_list(200)
+    for e in employees:
+        e["id"] = str(e.pop("_id"))
+    return employees
+
 # ---- BULK EMPLOYEE IMPORT ----
 @api_router.post("/events/{event_id}/employees/import")
 async def import_employees(event_id: str, request: Request, file: UploadFile = File(...)):
