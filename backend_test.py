@@ -353,6 +353,30 @@ Another Worker,301,22,27,12"""
         
         return success
 
+    def test_daily_statement_pdf(self):
+        """Test daily statement PDF export for Day 1"""
+        if not self.event_id:
+            print("❌ No event ID available for testing")
+            return False
+            
+        success, _ = self.run_test(
+            "Export Daily Statement PDF Day 1",
+            "GET",
+            f"events/{self.event_id}/daily-statement/1/pdf",
+            200
+        )
+        return success
+
+    def test_employee_template_download(self):
+        """Test CSV template download"""
+        success, _ = self.run_test(
+            "Download Employee CSV Template",
+            "GET",
+            "employees/template",
+            200
+        )
+        return success
+
     def test_logout(self):
         """Test logout"""
         success, response = self.run_test(
@@ -420,6 +444,15 @@ def main():
     
     if not tester.test_bulk_import_csv():
         print("❌ Bulk CSV import failed")
+        return 1
+    
+    # Test new PDF and template features
+    if not tester.test_daily_statement_pdf():
+        print("❌ Daily statement PDF export failed")
+        return 1
+    
+    if not tester.test_employee_template_download():
+        print("❌ Employee template download failed")
         return 1
     
     # Run export tests

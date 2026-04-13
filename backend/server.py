@@ -375,7 +375,118 @@ async def get_daily_statement(event_id: str, day: int, request: Request):
             "total_hours": total_hrs, "gross": gross,
             "benefit_co": round(bp * gross, 2), "fund_co": round(fp * gross, 2), "deduction": round(dp * gross, 2),
         })
-    return {"day": day, "fund_pct": fp, "benefit_pct": bp, "deduction_pct": dp, "employees": result}
+    return {"day": day, "fund_pct": fp, "benefit_pct": bp, "deduction_pct": dp, "employees": result,
+            "event_name": event.get("event_name",""), "employer": event.get("employer",""),
+            "venue": event.get("venue",""), "job_number": event.get("job_number",""),
+            "day_date": (event.get("days") or {}).get(str(day), {}).get("date", ""),
+            "day_note": (event.get("notes") or {}).get(str(day), "")}
+
+# ---- DAILY STATEMENT PDF ----
+@api_router.get("/events/{event_id}/daily-statement/{day}/pdf")
+async def export_daily_statement_pdf(event_id: str, day: int, request: Request):
+    await get_current_user(request)
+    stmt = await get_daily_statement(event_id, day, request)
+    emps = [e for e in stmt["employees"] if e["total_hours"] > 0 or e["sr_hours"] > 0]
+
+    pdf = FPDF(orientation='L', unit='in', format='Letter')
+    pdf.set_auto_page_break(auto=True, margin=0.5)
+    pdf.add_page()
+    pw = 11 - 1.0
+    pdf.set_left_margin(0.5)
+    pdf.set_right_margin(0.5)
+
+    pdf.set_font('Helvetica', 'B', 16)
+    pdf.cell(pw, 0.35, f"Daily Statement - Day {day}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 11)
+    pdf.cell(pw, 0.25, stmt.get("event_name", ""), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 9)
+    info_parts = [f"Employer: {stmt.get('employer','')}",  f"Venue: {stmt.get('venue','')}",
+                  f"Job #: {stmt.get('job_number','')}"]
+    if stmt.get("day_date"):
+        info_parts.append(f"Date: {stmt['day_date']}")
+    pdf.cell(pw, 0.22, "  |  ".join(info_parts), new_x="LMARGIN", new_y="NEXT")
+    if stmt.get("day_note"):
+        pdf.set_font('Helvetica', 'I', 8)
+        pdf.cell(pw, 0.2, f"Note: {stmt['day_note']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 8)
+    pdf.cell(pw, 0.2, f"Fund: {stmt['fund_pct']*100:.1f}%  |  Benefit: {stmt['benefit_pct']*100:.1f}%  |  Deduction: {stmt['deduction_pct']*100:.1f}%", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(0.1)
+
+    headers = ["#", "Employee", "Dept/Emp #", "Hrly Rate", "S.T. Hrs", "O.T. Hrs", "D.T. Hrs",
+               "Special Rate", "SR Hrs", "Special Tot", "Total Hrs", "Benefit", "Fund", "Deduct", "Gross Salary"]
+    widths = [0.3, 1.4, 0.75, 0.6, 0.55, 0.55, 0.55, 0.65, 0.5, 0.6, 0.55, 0.65, 0.55, 0.55, 0.8]
+    rh = 0.22
+
+    pdf.set_font('Helvetica', 'B', 7.5)
+    pdf.set_fill_color(230, 235, 245)
+    pdf.set_draw_color(180, 180, 180)
+    for i, h in enumerate(headers):
+        pdf.cell(widths[i], rh, h, border=1, fill=True, align='C')
+    pdf.ln()
+
+    pdf.set_font('Helvetica', '', 7.5)
+    for idx, emp in enumerate(emps):
+        if pdf.get_y() > 7.5:
+            pdf.add_page()
+            pdf.set_font('Helvetica', 'B', 7.5)
+            pdf.set_fill_color(230, 235, 245)
+            for i, h in enumerate(headers):
+                pdf.cell(widths[i], rh, h, border=1, fill=True, align='C')
+            pdf.ln()
+            pdf.set_font('Helvetica', '', 7.5)
+        fill = idx % 2 == 1
+        if fill:
+            pdf.set_fill_color(245, 247, 250)
+        vals = [str(idx+1), emp["name"][:22], emp["dept_emp_num"][:12],
+                f"{emp['hrly_rate']:.2f}",
+                f"{emp['st_hrs']:.1f}" if emp['st_hrs'] else "-",
+                f"{emp['ot_hrs']:.1f}" if emp['ot_hrs'] else "-",
+                f"{emp['dt_hrs']:.1f}" if emp['dt_hrs'] else "-",
+                f"{emp['special_rate']:.2f}" if emp['special_rate'] else "-",
+                f"{emp['sr_hours']:.1f}" if emp['sr_hours'] else "-",
+                f"{emp['special_tot']:.2f}" if emp['special_tot'] else "-",
+                f"{emp['total_hours']:.1f}", f"{emp['benefit_co']:.2f}",
+                f"{emp['fund_co']:.2f}", f"{emp['deduction']:.2f}", f"{emp['gross']:.2f}"]
+        for i, v in enumerate(vals):
+            align = 'L' if i <= 2 else 'R'
+            pdf.cell(widths[i], rh, v, border=1, align=align, fill=fill)
+        pdf.ln()
+
+    # Totals
+    pdf.set_font('Helvetica', 'B', 7.5)
+    pdf.set_fill_color(220, 225, 240)
+    tots = ["", "TOTALS", "", "",
+            f"{sum(e['st_hrs'] for e in emps):.1f}", f"{sum(e['ot_hrs'] for e in emps):.1f}",
+            f"{sum(e['dt_hrs'] for e in emps):.1f}", "",
+            f"{sum(e['sr_hours'] for e in emps):.1f}", f"{sum(e['special_tot'] for e in emps):.2f}",
+            f"{sum(e['total_hours'] for e in emps):.1f}", f"{sum(e['benefit_co'] for e in emps):.2f}",
+            f"{sum(e['fund_co'] for e in emps):.2f}", f"{sum(e['deduction'] for e in emps):.2f}",
+            f"{sum(e['gross'] for e in emps):.2f}"]
+    for i, v in enumerate(tots):
+        align = 'L' if i <= 2 else 'R'
+        pdf.cell(widths[i], rh + 0.03, v, border=1, align=align, fill=True)
+    pdf.ln(0.3)
+    pdf.set_font('Helvetica', 'I', 7)
+    pdf.cell(pw, 0.18, f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+
+    pdf_bytes = pdf.output()
+    output = BytesIO(pdf_bytes)
+    name = stmt.get("event_name", "") or "payroll"
+    return StreamingResponse(output, media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{name}_day{day}_statement.pdf"'})
+
+# ---- CSV TEMPLATE DOWNLOAD ----
+@api_router.get("/employees/template")
+async def download_employee_template(request: Request):
+    await get_current_user(request)
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Name", "Dept/Emp Number", "Rate 1", "Rate 2", "Special Rate"])
+    writer.writerow(["John Doe", "101", "25.00", "30.00", "15.00"])
+    writer.writerow(["Jane Smith", "102", "28.50", "35.00", "20.00"])
+    csv_bytes = output.getvalue().encode('utf-8')
+    return StreamingResponse(BytesIO(csv_bytes), media_type="text/csv",
+                             headers={"Content-Disposition": 'attachment; filename="employee_import_template.csv"'})
 
 # ---- SUM TOTALS ----
 async def _get_sum_totals_data(event_id: str):

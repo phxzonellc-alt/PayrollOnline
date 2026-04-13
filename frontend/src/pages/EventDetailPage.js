@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X, Eye, Edit3 } from 'lucide-react';
+import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X, Eye, Edit3, Printer } from 'lucide-react';
 
 const DAYS = [1,2,3,4,5,6,7,8,9,10];
 
@@ -193,6 +193,36 @@ export default function EventDetailPage() {
     } catch { toast.error('Export failed'); }
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const url = `${process.env.REACT_APP_BACKEND_URL}/api/employees/template`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error('Template download failed');
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'employee_import_template.csv';
+      link.click();
+      URL.revokeObjectURL(link.href);
+      toast.success('Template downloaded');
+    } catch { toast.error('Template download failed'); }
+  };
+
+  const handleDayStatementPdf = async (dayNum) => {
+    try {
+      const url = `${process.env.REACT_APP_BACKEND_URL}/api/events/${id}/daily-statement/${dayNum}/pdf`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error('PDF export failed');
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${event?.event_name || 'payroll'}_day${dayNum}_statement.pdf`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      toast.success(`Day ${dayNum} statement PDF exported`);
+    } catch { toast.error('PDF export failed'); }
+  };
+
   if (loading || !event) return <div className="min-h-screen bg-background flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
 
   const fp = event.fund_pct || 0.02;
@@ -250,6 +280,9 @@ export default function EventDetailPage() {
           {employees.length} Employee{employees.length !== 1 ? 's' : ''}
         </p>
         <div className="flex gap-2">
+          <Button variant="outline" className="rounded-sm gap-2 text-sm" onClick={handleDownloadTemplate} data-testid="download-template-button">
+            <Download className="h-4 w-4" /> Template
+          </Button>
           <label className="cursor-pointer">
             <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleImportFile} data-testid="import-file-input" />
             <Button variant="outline" className="rounded-sm gap-2 text-sm pointer-events-none" asChild>
@@ -475,6 +508,11 @@ export default function EventDetailPage() {
           {!isStatement && (
             <Button onClick={saveDay} disabled={saving} className="rounded-sm gap-2" data-testid="save-day-button">
               <Save className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Day'}
+            </Button>
+          )}
+          {isStatement && (
+            <Button variant="outline" onClick={() => handleDayStatementPdf(dayNum)} className="rounded-sm gap-2" data-testid="print-day-statement-pdf">
+              <Printer className="h-4 w-4" /> Print PDF
             </Button>
           )}
         </div>
