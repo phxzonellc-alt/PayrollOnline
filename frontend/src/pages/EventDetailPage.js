@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X, Eye, Edit3, Printer, GripVertical } from 'lucide-react';
+import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X, Eye, Edit3, Printer, GripVertical, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 const DAYS = [1,2,3,4,5,6,7,8,9,10];
 
@@ -34,6 +34,8 @@ export default function EventDetailPage() {
   const [dayViewMode, setDayViewMode] = useState('input');
   const [dailyStatement, setDailyStatement] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
+  const [sortField, setSortField] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
 
   const loadEvent = useCallback(async () => {
     try {
@@ -169,6 +171,40 @@ export default function EventDetailPage() {
       setEmployees(res.data);
       toast.success('Order saved');
     } catch { toast.error('Failed to save order'); }
+  };
+
+  const handleSort = async (field) => {
+    let newDir, newField;
+    if (sortField === field) {
+      if (sortDir === 'asc') { newDir = 'desc'; newField = field; }
+      else { newDir = 'asc'; newField = null; } // third click → reset
+    } else {
+      newDir = 'asc'; newField = field;
+    }
+    setSortField(newField);
+    setSortDir(newDir);
+    if (!newField) {
+      await loadEmployees(); // reload original order
+      return;
+    }
+    const sorted = [...employees].sort((a, b) => {
+      const va = (a[field] || '').toString().toLowerCase();
+      const vb = (b[field] || '').toString().toLowerCase();
+      return newDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+    setEmployees(sorted);
+    try {
+      const res = await api.post(`/events/${id}/employees/reorder`, { order: sorted.map(e => e.id) });
+      setEmployees(res.data);
+      toast.success(`Sorted by ${field === 'name' ? 'Name' : 'Dept'} ${newDir === 'asc' ? 'A-Z' : 'Z-A'}`);
+    } catch { toast.error('Failed to save order'); }
+  };
+
+  const SortIcon = ({ field }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 inline ml-1 opacity-40" />;
+    return sortDir === 'asc'
+      ? <ArrowUp className="h-3 w-3 inline ml-1 text-primary" />
+      : <ArrowDown className="h-3 w-3 inline ml-1 text-primary" />;
   };
 
   const updateHour = (empId, field, value) => {
@@ -350,8 +386,12 @@ export default function EventDetailPage() {
             <tr>
               <th className="w-6"></th>
               <th className="text-left w-10">#</th>
-              <th className="text-left">Name</th>
-              <th className="text-left">Dept/Emp #</th>
+              <th className="text-left cursor-pointer select-none hover:text-primary transition-colors" onClick={() => handleSort('name')} data-testid="sort-by-name">
+                Name<SortIcon field="name" />
+              </th>
+              <th className="text-left cursor-pointer select-none hover:text-primary transition-colors" onClick={() => handleSort('dept_emp_num')} data-testid="sort-by-dept">
+                Dept/Emp #<SortIcon field="dept_emp_num" />
+              </th>
               <th className="text-right">Rate 1</th>
               <th className="text-right">Rate 2</th>
               <th className="text-right">Special Rate</th>
