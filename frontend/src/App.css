@@ -1,34 +1,65 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Global utility styles for MEBO Payroll */
+.font-mono-data {
+  font-family: 'JetBrains Mono', monospace;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+/* Dense table styles */
+.payroll-table th,
+.payroll-table td {
+  padding: 4px 8px;
+  font-size: 0.8125rem;
+  border: 1px solid hsl(var(--border));
+  white-space: nowrap;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.payroll-table th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.6875rem;
+  letter-spacing: 0.05em;
+  color: hsl(var(--muted-foreground));
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.App-link {
-    color: #61dafb;
+.payroll-table input[type="number"] {
+  width: 60px;
+  padding: 2px 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8125rem;
+  text-align: right;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  border-radius: 2px;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.payroll-table input[type="number"]:focus {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -1px;
+  border-color: hsl(var(--ring));
+}
+
+.payroll-table .calc-cell {
+  font-family: 'JetBrains Mono', monospace;
+  text-align: right;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 0.5);
+}
+
+.payroll-table .total-row td {
+  font-weight: 700;
+  background: hsl(var(--primary) / 0.08);
+  border-top: 2px solid hsl(var(--primary));
+}
+
+/* Hide number input spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
 }
