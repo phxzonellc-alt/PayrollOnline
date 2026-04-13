@@ -429,8 +429,7 @@ export default function EventDetailPage() {
             {emps.map((emp, i) => {
               const hasData = emp.total_hours > 0 || emp.sr_hours > 0;
               if (!hasData) return null;
-              const usedR2 = emp.hrly_rate !== 0 && emp.hrly_rate !== emp.special_rate && (emp.st_hrs + emp.ot_hrs + emp.dt_hrs) > 0 && emp.hrly_rate === (employees.find(e => e.id === emp.employee_id)?.rate2 || -1);
-              const r2c = usedR2 ? ' r2-col' : '';
+              const r2c = emp.used_r2 ? ' r2-col' : '';
               return (
                 <tr key={emp.employee_id} className={i%2===0?'':'bg-muted/30'}>
                   <td className="font-mono text-xs text-muted-foreground">{i+1}</td>

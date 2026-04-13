@@ -374,6 +374,7 @@ async def get_daily_statement(event_id: str, day: int, request: Request):
             "special_rate": spr, "sr_hours": sr, "special_tot": round(spr * sr, 2),
             "total_hours": total_hrs, "gross": gross,
             "benefit_co": round(bp * gross, 2), "fund_co": round(fp * gross, 2), "deduction": round(dp * gross, 2),
+            "used_r2": not has_r1 and (s2 + o2 + d2) > 0,
         })
     return {"day": day, "fund_pct": fp, "benefit_pct": bp, "deduction_pct": dp, "employees": result,
             "event_name": event.get("event_name",""), "employer": event.get("employer",""),
@@ -425,6 +426,7 @@ async def export_daily_statement_pdf(event_id: str, day: int, request: Request):
     pdf.ln()
 
     pdf.set_font('Helvetica', '', 7.5)
+    r2_stmt_cols = {3, 4, 5, 6}  # Hrly Rate, S.T., O.T., D.T.
     for idx, emp in enumerate(emps):
         if pdf.get_y() > 7.5:
             pdf.add_page()
@@ -434,9 +436,7 @@ async def export_daily_statement_pdf(event_id: str, day: int, request: Request):
                 pdf.cell(widths[i], rh, h, border=1, fill=True, align='C')
             pdf.ln()
             pdf.set_font('Helvetica', '', 7.5)
-        fill = idx % 2 == 1
-        if fill:
-            pdf.set_fill_color(245, 247, 250)
+        used_r2 = emp.get("used_r2", False)
         vals = [str(idx+1), emp["name"][:22], emp["dept_emp_num"][:12],
                 f"{emp['hrly_rate']:.2f}",
                 f"{emp['st_hrs']:.1f}" if emp['st_hrs'] else "-",
@@ -449,7 +449,14 @@ async def export_daily_statement_pdf(event_id: str, day: int, request: Request):
                 f"{emp['fund_co']:.2f}", f"{emp['deduction']:.2f}", f"{emp['gross']:.2f}"]
         for i, v in enumerate(vals):
             align = 'L' if i <= 2 else 'R'
-            pdf.cell(widths[i], rh, v, border=1, align=align, fill=fill)
+            if used_r2 and i in r2_stmt_cols:
+                pdf.set_fill_color(255, 243, 224)
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=True)
+            elif idx % 2 == 1:
+                pdf.set_fill_color(245, 247, 250)
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=True)
+            else:
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=False)
         pdf.ln()
 
     # Totals
@@ -544,8 +551,11 @@ async def export_excel(event_id: str, request: Request):
     ws.title = "Sum-Totals"
     hdr_font = Font(bold=True, size=10)
     hdr_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    r2_hdr_fill = PatternFill(start_color="FFE0B2", end_color="FFE0B2", fill_type="solid")
+    r2_cell_fill = PatternFill(start_color="FFF3E0", end_color="FFF3E0", fill_type="solid")
     thin = Side(style='thin')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    r2_cols = {7, 8, 9, 10}  # 1-indexed: Rate 2, R2 ST, R2 OT, R2 DT
     # Event info
     ws.append([f"Event: {data['event']['event_name']}", "", f"Employer: {data['event']['employer']}", "",
                f"Job #: {data['event']['job_number']}", "", f"Venue: {data['event']['venue']}"])
@@ -556,7 +566,7 @@ async def export_excel(event_id: str, request: Request):
     ws.append(headers)
     for cell in ws[ws.max_row]:
         cell.font = hdr_font
-        cell.fill = hdr_fill
+        cell.fill = r2_hdr_fill if cell.column in r2_cols else hdr_fill
         cell.border = border
         cell.alignment = Alignment(horizontal='center', wrap_text=True)
     for emp in data["employees"]:
@@ -567,6 +577,8 @@ async def export_excel(event_id: str, request: Request):
         ws.append(row)
         for cell in ws[ws.max_row]:
             cell.border = border
+            if cell.column in r2_cols:
+                cell.fill = r2_cell_fill
             if cell.column > 2:
                 cell.number_format = '#,##0.00'
                 cell.alignment = Alignment(horizontal='right')
@@ -581,6 +593,8 @@ async def export_excel(event_id: str, request: Request):
     for cell in ws[ws.max_row]:
         cell.font = Font(bold=True)
         cell.border = border
+        if cell.column in r2_cols:
+            cell.fill = r2_cell_fill
     for col in ws.columns:
         max_len = max(len(str(cell.value or "")) for cell in col)
         ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 2, 8), 18)
@@ -630,10 +644,15 @@ async def export_pdf(event_id: str, request: Request):
               0.58, 0.5, 0.5, 0.73]
     rh = 0.22  # row height
 
+    r2_pdf_cols = {7, 8, 9, 10}  # Rate 2, R2 ST, R2 OT, R2 DT
+
     pdf.set_font('Helvetica', 'B', 7)
-    pdf.set_fill_color(230, 235, 245)
     pdf.set_draw_color(180, 180, 180)
     for i, h in enumerate(headers):
+        if i in r2_pdf_cols:
+            pdf.set_fill_color(255, 224, 178)
+        else:
+            pdf.set_fill_color(230, 235, 245)
         pdf.cell(widths[i], rh, h, border=1, fill=True, align='C')
     pdf.ln()
 
@@ -643,17 +662,14 @@ async def export_pdf(event_id: str, request: Request):
         if pdf.get_y() > 7.5:  # near bottom of 8.5in page in landscape
             pdf.add_page()
             pdf.set_font('Helvetica', 'B', 7)
-            pdf.set_fill_color(230, 235, 245)
             for i, h in enumerate(headers):
+                if i in r2_pdf_cols:
+                    pdf.set_fill_color(255, 224, 178)
+                else:
+                    pdf.set_fill_color(230, 235, 245)
                 pdf.cell(widths[i], rh, h, border=1, fill=True, align='C')
             pdf.ln()
             pdf.set_font('Helvetica', '', 7)
-
-        if idx % 2 == 1:
-            pdf.set_fill_color(245, 247, 250)
-            fill = True
-        else:
-            fill = False
 
         vals = [str(idx+1), emp["name"][:18], emp["dept_emp_num"][:10],
                 f"{emp['rate1']:.2f}", f"{emp['r1_st']:.1f}", f"{emp['r1_ot']:.1f}", f"{emp['r1_dt']:.1f}",
@@ -663,7 +679,14 @@ async def export_pdf(event_id: str, request: Request):
                 f"{emp['deduction']:.2f}", f"{emp['gross']:.2f}"]
         for i, v in enumerate(vals):
             align = 'L' if i <= 2 else 'R'
-            pdf.cell(widths[i], rh, v, border=1, align=align, fill=fill)
+            if i in r2_pdf_cols:
+                pdf.set_fill_color(255, 243, 224)
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=True)
+            elif idx % 2 == 1:
+                pdf.set_fill_color(245, 247, 250)
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=True)
+            else:
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=False)
         pdf.ln()
 
     # Totals row
@@ -681,6 +704,10 @@ async def export_pdf(event_id: str, request: Request):
                 f"{sum(e['gross'] for e in emps):.2f}"]
     for i, v in enumerate(tot_vals):
         align = 'L' if i <= 2 else 'R'
+        if i in r2_pdf_cols:
+            pdf.set_fill_color(255, 236, 200)
+        else:
+            pdf.set_fill_color(220, 225, 240)
         pdf.cell(widths[i], rh + 0.03, v, border=1, align=align, fill=True)
     pdf.ln()
 
