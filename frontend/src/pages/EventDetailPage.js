@@ -429,15 +429,17 @@ export default function EventDetailPage() {
             {emps.map((emp, i) => {
               const hasData = emp.total_hours > 0 || emp.sr_hours > 0;
               if (!hasData) return null;
+              const usedR2 = emp.hrly_rate !== 0 && emp.hrly_rate !== emp.special_rate && (emp.st_hrs + emp.ot_hrs + emp.dt_hrs) > 0 && emp.hrly_rate === (employees.find(e => e.id === emp.employee_id)?.rate2 || -1);
+              const r2c = usedR2 ? ' r2-col' : '';
               return (
                 <tr key={emp.employee_id} className={i%2===0?'':'bg-muted/30'}>
                   <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
                   <td className="text-sm font-medium">{emp.name}</td>
                   <td className="text-xs text-muted-foreground">{emp.dept_emp_num}</td>
-                  <td className="font-mono text-xs text-right">{emp.hrly_rate?.toFixed(2)}</td>
-                  <td className="font-mono text-xs text-right">{emp.st_hrs > 0 ? emp.st_hrs.toFixed(1) : '-'}</td>
-                  <td className="font-mono text-xs text-right">{emp.ot_hrs > 0 ? emp.ot_hrs.toFixed(1) : '-'}</td>
-                  <td className="font-mono text-xs text-right">{emp.dt_hrs > 0 ? emp.dt_hrs.toFixed(1) : '-'}</td>
+                  <td className={`font-mono text-xs text-right${r2c}`}>{emp.hrly_rate?.toFixed(2)}</td>
+                  <td className={`font-mono text-xs text-right${r2c}`}>{emp.st_hrs > 0 ? emp.st_hrs.toFixed(1) : '-'}</td>
+                  <td className={`font-mono text-xs text-right${r2c}`}>{emp.ot_hrs > 0 ? emp.ot_hrs.toFixed(1) : '-'}</td>
+                  <td className={`font-mono text-xs text-right${r2c}`}>{emp.dt_hrs > 0 ? emp.dt_hrs.toFixed(1) : '-'}</td>
                   <td className="font-mono text-xs text-right">{emp.special_rate > 0 ? emp.special_rate.toFixed(2) : '-'}</td>
                   <td className="font-mono text-xs text-right">{emp.sr_hours > 0 ? emp.sr_hours.toFixed(1) : '-'}</td>
                   <td className="font-mono text-xs text-right">{emp.special_tot > 0 ? emp.special_tot.toFixed(2) : '-'}</td>
@@ -527,7 +529,7 @@ export default function EventDetailPage() {
                     <th className="text-left">Employee</th>
                     <th className="text-left">Dept</th>
                     <th className="text-center" colSpan={3}>Rate 1 Hours</th>
-                    <th className="text-center" colSpan={3}>Rate 2 Hours</th>
+                    <th className="text-center r2-col" colSpan={3}>Rate 2 Hours</th>
                     <th>SR</th>
                     <th>HRS</th>
                     <th>Gross</th>
@@ -538,7 +540,7 @@ export default function EventDetailPage() {
                   <tr>
                     <th></th><th></th><th></th>
                     <th>ST</th><th>OT</th><th>DT</th>
-                    <th>ST</th><th>OT</th><th>DT</th>
+                    <th className="r2-col">ST</th><th className="r2-col">OT</th><th className="r2-col">DT</th>
                     <th>Hrs</th><th></th><th></th><th></th><th></th><th></th>
                   </tr>
                 </thead>
@@ -555,7 +557,7 @@ export default function EventDetailPage() {
                         <td className="text-sm font-medium max-w-[140px] truncate">{emp.name}</td>
                         <td className="text-xs text-muted-foreground">{emp.dept_emp_num}</td>
                         {hourFields.map(f => (
-                          <td key={f} className="p-0">
+                          <td key={f} className={`p-0 ${f.includes('r2') ? 'r2-col' : ''}`}>
                             <input type="number" step="0.5" min="0" value={getVal(emp.id,f) || ''}
                               onChange={e => updateHour(emp.id, f, e.target.value)}
                               data-testid={`entry-${emp.id}-${f}`}
@@ -575,7 +577,7 @@ export default function EventDetailPage() {
                       <td></td><td className="font-semibold">TOTALS</td><td></td>
                       {hourFields.map(f => {
                         const total = employees.reduce((sum, emp) => sum + (timeEntries[emp.id]?.[f] || 0), 0);
-                        return <td key={f} className="font-mono text-xs text-right font-bold">{total.toFixed(1)}</td>;
+                        return <td key={f} className={`font-mono text-xs text-right font-bold ${f.includes('r2') ? 'r2-col' : ''}`}>{total.toFixed(1)}</td>;
                       })}
                       <td className="font-mono text-xs text-right font-bold">
                         {employees.reduce((s, emp) => {
@@ -646,8 +648,8 @@ export default function EventDetailPage() {
                 <th className="text-left">Dept</th>
                 <th>Rate 1</th>
                 <th>R1 ST</th><th>R1 OT</th><th>R1 DT</th>
-                <th>Rate 2</th>
-                <th>R2 ST</th><th>R2 OT</th><th>R2 DT</th>
+                <th className="r2-col">Rate 2</th>
+                <th className="r2-col">R2 ST</th><th className="r2-col">R2 OT</th><th className="r2-col">R2 DT</th>
                 <th>SR$</th><th>SR Hrs</th><th>SR Tot</th>
                 <th>Hrs</th><th>Benefit</th><th>Fund</th><th>Deduct</th><th>Gross</th>
               </tr>
@@ -662,10 +664,10 @@ export default function EventDetailPage() {
                   <td className="font-mono text-xs text-right">{emp.r1_st?.toFixed(1)}</td>
                   <td className="font-mono text-xs text-right">{emp.r1_ot?.toFixed(1)}</td>
                   <td className="font-mono text-xs text-right">{emp.r1_dt?.toFixed(1)}</td>
-                  <td className="font-mono text-xs text-right">{emp.rate2?.toFixed(2)}</td>
-                  <td className="font-mono text-xs text-right">{emp.r2_st?.toFixed(1)}</td>
-                  <td className="font-mono text-xs text-right">{emp.r2_ot?.toFixed(1)}</td>
-                  <td className="font-mono text-xs text-right">{emp.r2_dt?.toFixed(1)}</td>
+                  <td className="font-mono text-xs text-right r2-col">{emp.rate2?.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right r2-col">{emp.r2_st?.toFixed(1)}</td>
+                  <td className="font-mono text-xs text-right r2-col">{emp.r2_ot?.toFixed(1)}</td>
+                  <td className="font-mono text-xs text-right r2-col">{emp.r2_dt?.toFixed(1)}</td>
                   <td className="font-mono text-xs text-right">{emp.special_rate?.toFixed(2)}</td>
                   <td className="font-mono text-xs text-right">{emp.sr_hours?.toFixed(1)}</td>
                   <td className="font-mono text-xs text-right">{emp.special_tot?.toFixed(2)}</td>
@@ -685,7 +687,7 @@ export default function EventDetailPage() {
                   ))}
                   <td></td>
                   {['r2_st','r2_ot','r2_dt'].map(k => (
-                    <td key={k} className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+(e[k]||0),0).toFixed(1)}</td>
+                    <td key={k} className="font-mono text-xs text-right font-bold r2-col">{emps.reduce((s,e)=>s+(e[k]||0),0).toFixed(1)}</td>
                   ))}
                   <td></td>
                   <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+(e.sr_hours||0),0).toFixed(1)}</td>

@@ -54,6 +54,24 @@
   border-top: 2px solid hsl(var(--primary));
 }
 
+/* Rate 2 column highlight */
+.payroll-table .r2-col {
+  background: hsl(35 92% 95%);
+}
+.payroll-table thead .r2-col {
+  background: hsl(35 80% 88%);
+  color: hsl(25 60% 30%);
+}
+.payroll-table .r2-col input[type="number"] {
+  background: hsl(35 92% 97%);
+}
+.payroll-table .r2-col input[type="number"]:focus {
+  background: hsl(0 0% 100%);
+}
+.payroll-table .total-row .r2-col {
+  background: hsl(35 70% 90%);
+}
+
 /* Hide number input spinners */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
