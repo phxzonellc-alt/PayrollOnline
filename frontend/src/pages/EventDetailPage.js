@@ -596,6 +596,8 @@ export default function EventDetailPage() {
     const getVal = (empId, field) => timeEntries[empId]?.[field] || 0;
     const hourFields = ['st_r1','ot_r1','dt_r1','st_r2','ot_r2','dt_r2','sr_hours'];
     const isStatement = dayViewMode === 'statement';
+    const dq = empFilter.toLowerCase();
+    const dayFiltered = dq ? employees.filter(e => e.name.toLowerCase().includes(dq) || (e.dept_emp_num || '').toLowerCase().includes(dq)) : employees;
     return (
       <div className="p-4">
         <div className="flex items-center justify-between mb-3">
@@ -622,6 +624,14 @@ export default function EventDetailPage() {
                 <Eye className="h-3 w-3 inline mr-1" />Statement
               </button>
             </div>
+            <div className="relative ml-2">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input value={empFilter} onChange={e => setEmpFilter(e.target.value)}
+                placeholder="Filter employees..."
+                className="rounded-sm pl-7 h-8 w-48 text-sm" data-testid="day-employee-search" />
+              {empFilter && <button onClick={() => setEmpFilter('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="h-3 w-3" /></button>}
+            </div>
+            {dq && <span className="text-xs text-muted-foreground">{dayFiltered.length}/{employees.length}</span>}
           </div>
           {!isStatement && (
             <Button onClick={saveDay} disabled={saving} className="rounded-sm gap-2" data-testid="save-day-button">
@@ -661,7 +671,7 @@ export default function EventDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.map((emp, i) => {
+                  {dayFiltered.map((emp, i) => {
                     const s1=getVal(emp.id,'st_r1'), o1=getVal(emp.id,'ot_r1'), d1=getVal(emp.id,'dt_r1');
                     const s2=getVal(emp.id,'st_r2'), o2=getVal(emp.id,'ot_r2'), d2=getVal(emp.id,'dt_r2');
                     const sr=getVal(emp.id,'sr_hours');
