@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
@@ -37,6 +37,12 @@ export default function EventDetailPage() {
   const [sortField, setSortField] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
   const [empFilter, setEmpFilter] = useState('');
+  const prevTabRef = useRef('info');
+  const infoDirtyRef = useRef(false);
+  const dayDirtyRef = useRef(false);
+  const timeEntriesRef = useRef({});
+  const employeesRef = useRef([]);
+  const eventRef = useRef(null);
 
   const loadEvent = useCallback(async () => {
     try {
@@ -79,6 +85,66 @@ export default function EventDetailPage() {
     Promise.all([loadEvent(), loadEmployees()]).finally(() => setLoading(false));
   }, [loadEvent, loadEmployees]);
 
+  // Keep refs in sync
+  useEffect(() => { timeEntriesRef.current = timeEntries; }, [timeEntries]);
+  useEffect(() => { employeesRef.current = employees; }, [employees]);
+  useEffect(() => { eventRef.current = event; }, [event]);
+
+  // Silent save helpers (no toast, no loading state)
+  const silentSaveDay = useCallback(async (tab) => {
+    if (!dayDirtyRef.current) return;
+    const dayNum = parseInt(tab.split('-')[1]);
+    const emps = employeesRef.current;
+    const te = timeEntriesRef.current;
+    if (!emps.length) return;
+    const entries = emps.map(emp => ({
+      employee_id: emp.id, day_number: dayNum,
+      st_r1: te[emp.id]?.st_r1 || 0, ot_r1: te[emp.id]?.ot_r1 || 0,
+      dt_r1: te[emp.id]?.dt_r1 || 0, st_r2: te[emp.id]?.st_r2 || 0,
+      ot_r2: te[emp.id]?.ot_r2 || 0, dt_r2: te[emp.id]?.dt_r2 || 0,
+      sr_hours: te[emp.id]?.sr_hours || 0,
+    }));
+    try { await api.post(`/events/${id}/time-entries/batch`, { entries }); } catch {}
+    dayDirtyRef.current = false;
+  }, [id]);
+
+  const silentSaveInfo = useCallback(async () => {
+    if (!infoDirtyRef.current || !eventRef.current) return;
+    try { await api.put(`/events/${id}`, eventRef.current); } catch {}
+    infoDirtyRef.current = false;
+  }, [id]);
+
+  // Auto-save when switching tabs
+  const handleTabChange = useCallback(async (newTab) => {
+    const prev = prevTabRef.current;
+    if (prev === newTab) return;
+    // Save previous tab
+    if (prev === 'info') await silentSaveInfo();
+    else if (prev.startsWith('day-')) await silentSaveDay(prev);
+    prevTabRef.current = newTab;
+    setActiveTab(newTab);
+  }, [silentSaveInfo, silentSaveDay]);
+
+  // Auto-save on page unmount
+  useEffect(() => {
+    return () => {
+      const tab = prevTabRef.current;
+      if (tab === 'info' && infoDirtyRef.current && eventRef.current) {
+        api.put(`/events/${id}`, eventRef.current).catch(() => {});
+      } else if (tab.startsWith('day-') && dayDirtyRef.current) {
+        const dayNum = parseInt(tab.split('-')[1]);
+        const entries = employeesRef.current.map(emp => ({
+          employee_id: emp.id, day_number: dayNum,
+          st_r1: timeEntriesRef.current[emp.id]?.st_r1 || 0, ot_r1: timeEntriesRef.current[emp.id]?.ot_r1 || 0,
+          dt_r1: timeEntriesRef.current[emp.id]?.dt_r1 || 0, st_r2: timeEntriesRef.current[emp.id]?.st_r2 || 0,
+          ot_r2: timeEntriesRef.current[emp.id]?.ot_r2 || 0, dt_r2: timeEntriesRef.current[emp.id]?.dt_r2 || 0,
+          sr_hours: timeEntriesRef.current[emp.id]?.sr_hours || 0,
+        }));
+        api.post(`/events/${id}/time-entries/batch`, { entries }).catch(() => {});
+      }
+    };
+  }, [id]);
+
   useEffect(() => {
     if (activeTab.startsWith('day-')) {
       const dayNum = parseInt(activeTab.split('-')[1]);
@@ -96,6 +162,7 @@ export default function EventDetailPage() {
     try {
       const res = await api.put(`/events/${id}`, event);
       setEvent(res.data);
+      infoDirtyRef.current = false;
       toast.success('Event saved');
     } catch { toast.error('Failed to save'); }
     finally { setSaving(false); }
@@ -208,7 +275,13 @@ export default function EventDetailPage() {
       : <ArrowDown className="h-3 w-3 inline ml-1 text-primary" />;
   };
 
+  const updateEventField = (updater) => {
+    infoDirtyRef.current = true;
+    setEvent(updater);
+  };
+
   const updateHour = (empId, field, value) => {
+    dayDirtyRef.current = true;
     setTimeEntries(prev => ({
       ...prev,
       [empId]: { ...(prev[empId] || {}), employee_id: empId, [field]: parseFloat(value) || 0 }
@@ -306,7 +379,7 @@ export default function EventDetailPage() {
           ['payroll_name','Payroll Name'],['contact_email','Email'],['cell_phone','Cell Phone']].map(([k,l]) => (
           <div key={k}>
             <Label className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">{l}</Label>
-            <Input value={event[k] || ''} onChange={e => setEvent(p => ({...p, [k]: e.target.value}))}
+            <Input value={event[k] || ''} onChange={e => updateEventField(p => ({...p, [k]: e.target.value}))}
               className="mt-1 rounded-sm" data-testid={`info-${k}`} />
           </div>
         ))}
@@ -316,17 +389,17 @@ export default function EventDetailPage() {
         <div className="grid grid-cols-3 gap-4">
           <div>
             <Label className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">Company Name</Label>
-            <Input value={event.company_name || ''} onChange={e => setEvent(p => ({...p, company_name: e.target.value}))}
+            <Input value={event.company_name || ''} onChange={e => updateEventField(p => ({...p, company_name: e.target.value}))}
               placeholder="Your Company LLC" className="mt-1 rounded-sm" data-testid="info-company_name" />
           </div>
           <div>
             <Label className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">Company Email</Label>
-            <Input type="email" value={event.company_email || ''} onChange={e => setEvent(p => ({...p, company_email: e.target.value}))}
+            <Input type="email" value={event.company_email || ''} onChange={e => updateEventField(p => ({...p, company_email: e.target.value}))}
               placeholder="payroll@company.com" className="mt-1 rounded-sm" data-testid="info-company_email" />
           </div>
           <div>
             <Label className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">Company Phone</Label>
-            <Input value={event.company_phone || ''} onChange={e => setEvent(p => ({...p, company_phone: e.target.value}))}
+            <Input value={event.company_phone || ''} onChange={e => updateEventField(p => ({...p, company_phone: e.target.value}))}
               placeholder="(555) 123-4567" className="mt-1 rounded-sm" data-testid="info-company_phone" />
           </div>
         </div>
@@ -336,7 +409,7 @@ export default function EventDetailPage() {
           <div key={k}>
             <Label className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">{l}</Label>
             <Input type="number" step="0.01" value={event[k] ?? v}
-              onChange={e => setEvent(p => ({...p, [k]: parseFloat(e.target.value) || 0}))}
+              onChange={e => updateEventField(p => ({...p, [k]: parseFloat(e.target.value) || 0}))}
               className="mt-1 rounded-sm font-mono" data-testid={`info-${k}`} />
           </div>
         ))}
@@ -348,10 +421,10 @@ export default function EventDetailPage() {
             <div key={d} className="flex gap-2 items-center">
               <span className="text-xs font-semibold text-muted-foreground w-10">D{d}</span>
               <Input type="date" value={event.days?.[d]?.date || ''}
-                onChange={e => setEvent(p => ({...p, days: {...(p.days||{}), [d]: {...(p.days?.[d]||{}), date: e.target.value}}}))}
+                onChange={e => updateEventField(p => ({...p, days: {...(p.days||{}), [d]: {...(p.days?.[d]||{}), date: e.target.value}}}))}
                 className="rounded-sm text-sm flex-1" data-testid={`day-${d}-date`} />
               <Input value={event.notes?.[d] || ''} placeholder="Note..."
-                onChange={e => setEvent(p => ({...p, notes: {...(p.notes||{}), [d]: e.target.value}}))}
+                onChange={e => updateEventField(p => ({...p, notes: {...(p.notes||{}), [d]: e.target.value}}))}
                 className="rounded-sm text-sm flex-1" data-testid={`day-${d}-note`} />
             </div>
           ))}
@@ -869,7 +942,7 @@ export default function EventDetailPage() {
         </div>
       </header>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <div className="border-b border-border px-6 overflow-x-auto">
           <TabsList className="h-auto bg-transparent p-0 gap-0">
             <TabsTrigger value="info" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2 text-xs tracking-wider uppercase font-semibold" data-testid="tab-info">
