@@ -128,6 +128,9 @@ async def create_event(request: Request):
         "payroll_name": body.get("payroll_name", ""),
         "contact_email": body.get("contact_email", ""),
         "cell_phone": body.get("cell_phone", ""),
+        "company_name": body.get("company_name", ""),
+        "company_email": body.get("company_email", ""),
+        "company_phone": body.get("company_phone", ""),
         "fund_pct": float(body.get("fund_pct", 0.02)),
         "benefit_pct": float(body.get("benefit_pct", 0.21)),
         "deduction_pct": float(body.get("deduction_pct", 0.05)),
@@ -380,7 +383,10 @@ async def get_daily_statement(event_id: str, day: int, request: Request):
             "event_name": event.get("event_name",""), "employer": event.get("employer",""),
             "venue": event.get("venue",""), "job_number": event.get("job_number",""),
             "day_date": (event.get("days") or {}).get(str(day), {}).get("date", ""),
-            "day_note": (event.get("notes") or {}).get(str(day), "")}
+            "day_note": (event.get("notes") or {}).get(str(day), ""),
+            "company_name": event.get("company_name", ""),
+            "company_email": event.get("company_email", ""),
+            "company_phone": event.get("company_phone", "")}
 
 # ---- DAILY STATEMENT PDF ----
 @api_router.get("/events/{event_id}/daily-statement/{day}/pdf")
@@ -395,6 +401,20 @@ async def export_daily_statement_pdf(event_id: str, day: int, request: Request):
     pw = 11 - 1.0
     pdf.set_left_margin(0.5)
     pdf.set_right_margin(0.5)
+
+    # Company branding - left header
+    if stmt.get('company_name'):
+        pdf.set_font('Helvetica', 'B', 12)
+        pdf.cell(pw, 0.3, stmt['company_name'], new_x="LMARGIN", new_y="NEXT")
+        brand_line = []
+        if stmt.get('company_email'):
+            brand_line.append(stmt['company_email'])
+        if stmt.get('company_phone'):
+            brand_line.append(stmt['company_phone'])
+        if brand_line:
+            pdf.set_font('Helvetica', '', 8)
+            pdf.cell(pw, 0.2, "  |  ".join(brand_line), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(0.1)
 
     pdf.set_font('Helvetica', 'B', 16)
     pdf.cell(pw, 0.35, f"Daily Statement - Day {day}", new_x="LMARGIN", new_y="NEXT")
@@ -532,7 +552,9 @@ async def _get_sum_totals_data(event_id: str):
     return {
         "event": {"event_name": event.get("event_name",""), "employer": event.get("employer",""),
                   "venue": event.get("venue",""), "job_number": event.get("job_number",""),
-                  "payroll_name": event.get("payroll_name",""), "days": event.get("days", {})},
+                  "payroll_name": event.get("payroll_name",""), "days": event.get("days", {}),
+                  "company_name": event.get("company_name",""), "company_email": event.get("company_email",""),
+                  "company_phone": event.get("company_phone","")},
         "fund_pct": fp, "benefit_pct": bp, "deduction_pct": dp, "employees": result,
     }
 
@@ -617,6 +639,21 @@ async def export_pdf(event_id: str, request: Request):
     pw = 11 - 1.0  # usable width = 10 inches (0.5in margins each side)
     pdf.set_left_margin(0.5)
     pdf.set_right_margin(0.5)
+
+    # Company branding - left header
+    co = data['event']
+    if co.get('company_name'):
+        pdf.set_font('Helvetica', 'B', 12)
+        pdf.cell(pw, 0.3, co['company_name'], new_x="LMARGIN", new_y="NEXT")
+        brand_line = []
+        if co.get('company_email'):
+            brand_line.append(co['company_email'])
+        if co.get('company_phone'):
+            brand_line.append(co['company_phone'])
+        if brand_line:
+            pdf.set_font('Helvetica', '', 8)
+            pdf.cell(pw, 0.2, "  |  ".join(brand_line), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(0.1)
 
     # Header
     pdf.set_font('Helvetica', 'B', 16)
