@@ -48,11 +48,13 @@ Deduction = Deduction% * Gross (default 5%)
 ## Prioritized Backlog
 ### P0 - Complete
 - [x] Auth, Events, Employees, Time Entry, Calculations, Export
+- [x] Inline employee editing (pencil icon -> edit fields -> save/cancel)
+- [x] Bulk employee import from CSV/Excel
+- [x] PDF export formatted for 8.5 x 11 Letter landscape
 
 ### P1 - Next
-- [ ] Inline employee editing (edit rates directly in table)
-- [ ] Daily statements view tabs (show calculated D1-D10 read-only)
-- [ ] Bulk employee import from CSV/Excel
+- [ ] Read-only daily statements view (computed D1-D10 output)
+- [ ] Employee sorting/reordering via drag-and-drop
 
 ### P2 - Future
 - [ ] Multi-user support with role-based access
