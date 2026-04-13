@@ -293,6 +293,66 @@ class PayrollAPITester:
         )
         return success
 
+    def test_update_employee(self):
+        """Test updating employee information (inline editing)"""
+        if not self.event_id or not self.employee_ids:
+            print("❌ No event ID or employee IDs available for testing")
+            return False
+            
+        # Update first employee (John Doe)
+        update_data = {
+            "name": "John Doe Updated",
+            "dept_emp_num": "101-UPDATED", 
+            "rate1": 27,  # Changed from 25
+            "rate2": 32,  # Changed from 30
+            "special_rate": 18  # Changed from 15
+        }
+        
+        success, response = self.run_test(
+            "Update Employee (Inline Edit)",
+            "PUT",
+            f"events/{self.event_id}/employees/{self.employee_ids[0]}",
+            200,
+            data=update_data
+        )
+        
+        if success:
+            print(f"   Updated employee name: {response.get('name', 'Unknown')}")
+            print(f"   Updated rate1: ${response.get('rate1', 0)}")
+        
+        return success
+
+    def test_bulk_import_csv(self):
+        """Test bulk employee import from CSV"""
+        if not self.event_id:
+            print("❌ No event ID available for testing")
+            return False
+            
+        # Create a test CSV content
+        csv_content = """Name,Dept/Emp Number,Rate 1,Rate 2,Special Rate
+Test Worker,300,20,25,10
+Another Worker,301,22,27,12"""
+        
+        # Create a file-like object for the CSV
+        files = {'file': ('test_employees.csv', csv_content, 'text/csv')}
+        
+        success, response = self.run_test(
+            "Bulk Import CSV",
+            "POST",
+            f"events/{self.event_id}/employees/import",
+            200,
+            files=files
+        )
+        
+        if success:
+            imported_count = response.get('imported', 0)
+            print(f"   Imported {imported_count} employees from CSV")
+            if 'employees' in response:
+                for emp in response['employees']:
+                    self.employee_ids.append(emp['id'])
+        
+        return success
+
     def test_logout(self):
         """Test logout"""
         success, response = self.run_test(
@@ -351,6 +411,15 @@ def main():
     
     if not tester.test_sum_totals():
         print("❌ Sum totals failed")
+        return 1
+    
+    # Test new features: inline editing and bulk import
+    if not tester.test_update_employee():
+        print("❌ Employee update (inline editing) failed")
+        return 1
+    
+    if not tester.test_bulk_import_csv():
+        print("❌ Bulk CSV import failed")
         return 1
     
     # Run export tests

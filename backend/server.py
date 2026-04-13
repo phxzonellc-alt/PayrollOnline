@@ -12,10 +12,12 @@ import logging
 import bcrypt
 import jwt
 from datetime import datetime, timezone, timedelta
-from io import BytesIO
+from io import BytesIO, StringIO
+import csv
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from fpdf import FPDF
+from fastapi import UploadFile, File
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -236,6 +238,71 @@ async def delete_employee(event_id: str, emp_id: str, request: Request):
     await db.time_entries.delete_many({"event_id": event_id, "employee_id": emp_id})
     return {"message": "Employee deleted"}
 
+# ---- BULK EMPLOYEE IMPORT ----
+@api_router.post("/events/{event_id}/employees/import")
+async def import_employees(event_id: str, request: Request, file: UploadFile = File(...)):
+    await get_current_user(request)
+    content = await file.read()
+    filename = file.filename or ""
+    imported = []
+    count = await db.employees.count_documents({"event_id": event_id})
+
+    if filename.endswith(('.xlsx', '.xls')):
+        wb = openpyxl.load_workbook(BytesIO(content), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        header = [str(c).strip().lower() if c else "" for c in rows[0]] if rows else []
+        name_col = next((i for i, h in enumerate(header) if 'name' in h), 0)
+        dept_col = next((i for i, h in enumerate(header) if 'dept' in h or 'emp' in h or 'number' in h), 1)
+        r1_col = next((i for i, h in enumerate(header) if 'rate' in h and '1' in h), 2)
+        r2_col = next((i for i, h in enumerate(header) if 'rate' in h and '2' in h), 3)
+        sr_col = next((i for i, h in enumerate(header) if 'special' in h or 'sr' in h), 4)
+        for row in rows[1:]:
+            if not row or not row[name_col]:
+                continue
+            count += 1
+            emp = {
+                "event_id": event_id,
+                "name": str(row[name_col]).strip(),
+                "dept_emp_num": str(row[dept_col]).strip() if len(row) > dept_col and row[dept_col] else "",
+                "rate1": float(row[r1_col] or 0) if len(row) > r1_col and row[r1_col] else 0,
+                "rate2": float(row[r2_col] or 0) if len(row) > r2_col and row[r2_col] else 0,
+                "special_rate": float(row[sr_col] or 0) if len(row) > sr_col and row[sr_col] else 0,
+                "sort_order": count,
+            }
+            result = await db.employees.insert_one(emp)
+            emp["id"] = str(result.inserted_id)
+            emp.pop("_id", None)
+            imported.append(emp)
+    else:
+        text = content.decode('utf-8-sig')
+        reader = csv.reader(StringIO(text))
+        header = [c.strip().lower() for c in next(reader, [])]
+        name_col = next((i for i, h in enumerate(header) if 'name' in h), 0)
+        dept_col = next((i for i, h in enumerate(header) if 'dept' in h or 'emp' in h or 'number' in h), 1)
+        r1_col = next((i for i, h in enumerate(header) if 'rate' in h and '1' in h), 2)
+        r2_col = next((i for i, h in enumerate(header) if 'rate' in h and '2' in h), 3)
+        sr_col = next((i for i, h in enumerate(header) if 'special' in h or 'sr' in h), 4)
+        for row in reader:
+            if not row or not row[name_col].strip():
+                continue
+            count += 1
+            emp = {
+                "event_id": event_id,
+                "name": row[name_col].strip(),
+                "dept_emp_num": row[dept_col].strip() if len(row) > dept_col else "",
+                "rate1": float(row[r1_col]) if len(row) > r1_col and row[r1_col].strip() else 0,
+                "rate2": float(row[r2_col]) if len(row) > r2_col and row[r2_col].strip() else 0,
+                "special_rate": float(row[sr_col]) if len(row) > sr_col and row[sr_col].strip() else 0,
+                "sort_order": count,
+            }
+            result = await db.employees.insert_one(emp)
+            emp["id"] = str(result.inserted_id)
+            emp.pop("_id", None)
+            imported.append(emp)
+
+    return {"imported": len(imported), "employees": imported}
+
 # ---- TIME ENTRIES ----
 @api_router.get("/events/{event_id}/time-entries")
 async def get_time_entries(event_id: str, day: int, request: Request):
@@ -393,7 +460,6 @@ async def export_excel(event_id: str, request: Request):
                 cell.number_format = '#,##0.00'
                 cell.alignment = Alignment(horizontal='right')
     # Totals row
-    last = ws.max_row
     totals = ["TOTALS", ""] + [sum(emp[k] for emp in data["employees"]) for k in
               ["rate1", "r1_st", "r1_ot", "r1_dt", "rate2", "r2_st", "r2_ot", "r2_dt",
                "special_rate", "sr_hours", "special_tot", "total_hours", "benefit_co", "fund_co", "deduction", "gross"]]
@@ -414,38 +480,104 @@ async def export_excel(event_id: str, request: Request):
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": f'attachment; filename="{name}_summary.xlsx"'})
 
-# ---- EXPORT PDF ----
+# ---- EXPORT PDF (8.5 x 11 Letter) ----
 @api_router.get("/events/{event_id}/export/pdf")
 async def export_pdf(event_id: str, request: Request):
     await get_current_user(request)
     data = await _get_sum_totals_data(event_id)
-    pdf = FPDF(orientation='L', unit='mm', format='A4')
+    # 8.5 x 11 inch = Letter size, landscape for wide tables
+    pdf = FPDF(orientation='L', unit='in', format='Letter')
+    pdf.set_auto_page_break(auto=True, margin=0.5)
     pdf.add_page()
-    pdf.set_font('Helvetica', 'B', 14)
-    pdf.cell(0, 8, f"Payroll Summary - {data['event']['event_name']}", new_x="LMARGIN", new_y="NEXT")
+    pw = 11 - 1.0  # usable width = 10 inches (0.5in margins each side)
+    pdf.set_left_margin(0.5)
+    pdf.set_right_margin(0.5)
+
+    # Header
+    pdf.set_font('Helvetica', 'B', 16)
+    pdf.cell(pw, 0.35, "Payroll Summary", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 11)
+    pdf.cell(pw, 0.25, f"{data['event']['event_name']}", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font('Helvetica', '', 9)
-    pdf.cell(0, 5, f"Employer: {data['event']['employer']}  |  Venue: {data['event']['venue']}  |  Job #: {data['event']['job_number']}", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(3)
-    headers = ["Employee", "Dept#", "R1", "R1 ST", "R1 OT", "R1 DT", "R2", "R2 ST", "R2 OT", "R2 DT",
-               "SR$", "SR Hr", "SR Tot", "Hrs", "Benefit", "Fund", "Deduct", "Gross"]
-    widths = [38, 20, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 16, 14, 18, 16, 16, 20]
+    pdf.cell(pw/3, 0.22, f"Employer: {data['event']['employer']}")
+    pdf.cell(pw/3, 0.22, f"Venue: {data['event']['venue']}")
+    pdf.cell(pw/3, 0.22, f"Job #: {data['event']['job_number']}", new_x="LMARGIN", new_y="NEXT")
+    if data['event'].get('payroll_name'):
+        pdf.cell(pw, 0.22, f"Prepared by: {data['event']['payroll_name']}", new_x="LMARGIN", new_y="NEXT")
+
+    # Rate info line
+    pdf.set_font('Helvetica', '', 8)
+    pdf.cell(pw, 0.2, f"Fund: {data['fund_pct']*100:.1f}%  |  Benefit: {data['benefit_pct']*100:.1f}%  |  Deduction: {data['deduction_pct']*100:.1f}%", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(0.1)
+
+    # Table headers
+    headers = ["#", "Employee", "Dept#", "Rate 1", "R1 ST", "R1 OT", "R1 DT", "Rate 2",
+               "R2 ST", "R2 OT", "R2 DT", "SR Rate", "SR Hrs", "SR Tot", "Tot Hrs",
+               "Benefit", "Fund", "Deduct", "Gross Total"]
+    widths = [0.3, 1.2, 0.65, 0.5, 0.45, 0.45, 0.45, 0.5,
+              0.45, 0.45, 0.45, 0.5, 0.42, 0.52, 0.48,
+              0.58, 0.5, 0.5, 0.73]
+    rh = 0.22  # row height
+
     pdf.set_font('Helvetica', 'B', 7)
-    pdf.set_fill_color(217, 225, 242)
+    pdf.set_fill_color(230, 235, 245)
+    pdf.set_draw_color(180, 180, 180)
     for i, h in enumerate(headers):
-        pdf.cell(widths[i], 6, h, border=1, fill=True, align='C')
+        pdf.cell(widths[i], rh, h, border=1, fill=True, align='C')
     pdf.ln()
-    pdf.set_font('Helvetica', '', 6.5)
-    for emp in data["employees"]:
-        vals = [emp["name"][:20], emp["dept_emp_num"][:12],
+
+    # Data rows
+    pdf.set_font('Helvetica', '', 7)
+    for idx, emp in enumerate(data["employees"]):
+        if pdf.get_y() > 7.5:  # near bottom of 8.5in page in landscape
+            pdf.add_page()
+            pdf.set_font('Helvetica', 'B', 7)
+            pdf.set_fill_color(230, 235, 245)
+            for i, h in enumerate(headers):
+                pdf.cell(widths[i], rh, h, border=1, fill=True, align='C')
+            pdf.ln()
+            pdf.set_font('Helvetica', '', 7)
+
+        if idx % 2 == 1:
+            pdf.set_fill_color(245, 247, 250)
+            fill = True
+        else:
+            fill = False
+
+        vals = [str(idx+1), emp["name"][:18], emp["dept_emp_num"][:10],
                 f"{emp['rate1']:.2f}", f"{emp['r1_st']:.1f}", f"{emp['r1_ot']:.1f}", f"{emp['r1_dt']:.1f}",
                 f"{emp['rate2']:.2f}", f"{emp['r2_st']:.1f}", f"{emp['r2_ot']:.1f}", f"{emp['r2_dt']:.1f}",
                 f"{emp['special_rate']:.2f}", f"{emp['sr_hours']:.1f}", f"{emp['special_tot']:.2f}",
                 f"{emp['total_hours']:.1f}", f"{emp['benefit_co']:.2f}", f"{emp['fund_co']:.2f}",
                 f"{emp['deduction']:.2f}", f"{emp['gross']:.2f}"]
         for i, v in enumerate(vals):
-            align = 'L' if i < 2 else 'R'
-            pdf.cell(widths[i], 5, v, border=1, align=align)
+            align = 'L' if i <= 2 else 'R'
+            pdf.cell(widths[i], rh, v, border=1, align=align, fill=fill)
         pdf.ln()
+
+    # Totals row
+    pdf.set_font('Helvetica', 'B', 7)
+    pdf.set_fill_color(220, 225, 240)
+    emps = data["employees"]
+    tot_vals = ["", "TOTALS", "",
+                "", f"{sum(e['r1_st'] for e in emps):.1f}", f"{sum(e['r1_ot'] for e in emps):.1f}",
+                f"{sum(e['r1_dt'] for e in emps):.1f}", "",
+                f"{sum(e['r2_st'] for e in emps):.1f}", f"{sum(e['r2_ot'] for e in emps):.1f}",
+                f"{sum(e['r2_dt'] for e in emps):.1f}", "",
+                f"{sum(e['sr_hours'] for e in emps):.1f}", f"{sum(e['special_tot'] for e in emps):.2f}",
+                f"{sum(e['total_hours'] for e in emps):.1f}", f"{sum(e['benefit_co'] for e in emps):.2f}",
+                f"{sum(e['fund_co'] for e in emps):.2f}", f"{sum(e['deduction'] for e in emps):.2f}",
+                f"{sum(e['gross'] for e in emps):.2f}"]
+    for i, v in enumerate(tot_vals):
+        align = 'L' if i <= 2 else 'R'
+        pdf.cell(widths[i], rh + 0.03, v, border=1, align=align, fill=True)
+    pdf.ln()
+
+    # Footer
+    pdf.ln(0.15)
+    pdf.set_font('Helvetica', 'I', 7)
+    pdf.cell(pw, 0.18, f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}  |  Page {{nb}}")
+
     pdf_bytes = pdf.output()
     output = BytesIO(pdf_bytes)
     name = data['event']['event_name'] or 'payroll'

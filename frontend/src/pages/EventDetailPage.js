@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText } from 'lucide-react';
+import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X } from 'lucide-react';
 
 const DAYS = [1,2,3,4,5,6,7,8,9,10];
 
@@ -29,6 +29,8 @@ export default function EventDetailPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [newEmp, setNewEmp] = useState({ name: '', dept_emp_num: '', rate1: '', rate2: '', special_rate: '' });
+  const [editingEmp, setEditingEmp] = useState(null);
+  const [editForm, setEditForm] = useState({});
 
   const loadEvent = useCallback(async () => {
     try {
@@ -102,6 +104,41 @@ export default function EventDetailPage() {
       setEmployees(prev => prev.filter(e => e.id !== empId));
       toast.success('Employee deleted');
     } catch { toast.error('Failed to delete'); }
+  };
+
+  const startEdit = (emp) => {
+    setEditingEmp(emp.id);
+    setEditForm({ name: emp.name, dept_emp_num: emp.dept_emp_num, rate1: emp.rate1, rate2: emp.rate2, special_rate: emp.special_rate });
+  };
+
+  const cancelEdit = () => { setEditingEmp(null); setEditForm({}); };
+
+  const saveEdit = async (empId) => {
+    try {
+      const res = await api.put(`/events/${id}/employees/${empId}`, {
+        name: editForm.name, dept_emp_num: editForm.dept_emp_num,
+        rate1: parseFloat(editForm.rate1) || 0, rate2: parseFloat(editForm.rate2) || 0,
+        special_rate: parseFloat(editForm.special_rate) || 0,
+      });
+      setEmployees(prev => prev.map(e => e.id === empId ? res.data : e));
+      setEditingEmp(null);
+      toast.success('Employee updated');
+    } catch { toast.error('Failed to update'); }
+  };
+
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await api.post(`/events/${id}/employees/import`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setEmployees(prev => [...prev, ...res.data.employees]);
+      toast.success(`Imported ${res.data.imported} employees`);
+    } catch { toast.error('Import failed. Check file format (CSV/Excel with headers: Name, Dept, Rate 1, Rate 2, Special Rate)'); }
+    e.target.value = '';
   };
 
   const updateHour = (empId, field, value) => {
@@ -195,35 +232,87 @@ export default function EventDetailPage() {
 
   const renderEmployeesTab = () => (
     <div className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">
+          {employees.length} Employee{employees.length !== 1 ? 's' : ''}
+        </p>
+        <div className="flex gap-2">
+          <label className="cursor-pointer">
+            <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleImportFile} data-testid="import-file-input" />
+            <Button variant="outline" className="rounded-sm gap-2 text-sm pointer-events-none" asChild>
+              <span><Upload className="h-4 w-4" /> Import CSV/Excel</span>
+            </Button>
+          </label>
+        </div>
+      </div>
       <div className="overflow-x-auto">
         <table className="payroll-table w-full border-collapse">
           <thead>
             <tr>
-              <th className="text-left">#</th>
+              <th className="text-left w-10">#</th>
               <th className="text-left">Name</th>
               <th className="text-left">Dept/Emp #</th>
               <th className="text-right">Rate 1</th>
               <th className="text-right">Rate 2</th>
               <th className="text-right">Special Rate</th>
-              <th></th>
+              <th className="w-20 text-center">Actions</th>
             </tr>
           </thead>
           <tbody>
             {employees.map((emp, i) => (
-              <tr key={emp.id} className={i % 2 === 0 ? '' : 'bg-muted/30'}>
-                <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
-                <td>{emp.name}</td>
-                <td>{emp.dept_emp_num}</td>
-                <td className="text-right font-mono">{emp.rate1?.toFixed(2)}</td>
-                <td className="text-right font-mono">{emp.rate2?.toFixed(2)}</td>
-                <td className="text-right font-mono">{emp.special_rate?.toFixed(2)}</td>
-                <td>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteEmployee(emp.id)} data-testid={`delete-emp-${emp.id}`}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </td>
-              </tr>
+              editingEmp === emp.id ? (
+                <tr key={emp.id} className="bg-primary/5">
+                  <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
+                  <td className="p-0"><input type="text" value={editForm.name}
+                    onChange={e => setEditForm(p => ({...p, name: e.target.value}))}
+                    className="w-full px-2 py-1 text-sm border border-ring bg-background focus:outline-none" data-testid={`edit-name-${emp.id}`} /></td>
+                  <td className="p-0"><input type="text" value={editForm.dept_emp_num}
+                    onChange={e => setEditForm(p => ({...p, dept_emp_num: e.target.value}))}
+                    className="w-full px-2 py-1 text-sm border border-ring bg-background focus:outline-none" data-testid={`edit-dept-${emp.id}`} /></td>
+                  <td className="p-0"><input type="number" step="0.01" value={editForm.rate1}
+                    onChange={e => setEditForm(p => ({...p, rate1: e.target.value}))}
+                    className="w-full px-2 py-1 text-sm font-mono text-right border border-ring bg-background focus:outline-none" data-testid={`edit-rate1-${emp.id}`} /></td>
+                  <td className="p-0"><input type="number" step="0.01" value={editForm.rate2}
+                    onChange={e => setEditForm(p => ({...p, rate2: e.target.value}))}
+                    className="w-full px-2 py-1 text-sm font-mono text-right border border-ring bg-background focus:outline-none" data-testid={`edit-rate2-${emp.id}`} /></td>
+                  <td className="p-0"><input type="number" step="0.01" value={editForm.special_rate}
+                    onChange={e => setEditForm(p => ({...p, special_rate: e.target.value}))}
+                    className="w-full px-2 py-1 text-sm font-mono text-right border border-ring bg-background focus:outline-none" data-testid={`edit-sr-${emp.id}`} /></td>
+                  <td className="text-center">
+                    <div className="flex gap-1 justify-center">
+                      <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm text-green-600 hover:text-green-700 hover:bg-green-50"
+                        onClick={() => saveEdit(emp.id)} data-testid={`save-edit-${emp.id}`}>
+                        <Check className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm text-muted-foreground hover:text-foreground"
+                        onClick={cancelEdit} data-testid={`cancel-edit-${emp.id}`}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={emp.id} className={i % 2 === 0 ? '' : 'bg-muted/30'}>
+                  <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
+                  <td>{emp.name}</td>
+                  <td>{emp.dept_emp_num}</td>
+                  <td className="text-right font-mono">{emp.rate1?.toFixed(2)}</td>
+                  <td className="text-right font-mono">{emp.rate2?.toFixed(2)}</td>
+                  <td className="text-right font-mono">{emp.special_rate?.toFixed(2)}</td>
+                  <td className="text-center">
+                    <div className="flex gap-1 justify-center">
+                      <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm text-muted-foreground hover:text-primary"
+                        onClick={() => startEdit(emp)} data-testid={`edit-emp-${emp.id}`}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm text-muted-foreground hover:text-destructive"
+                        onClick={() => deleteEmployee(emp.id)} data-testid={`delete-emp-${emp.id}`}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              )
             ))}
           </tbody>
         </table>
@@ -258,6 +347,9 @@ export default function EventDetailPage() {
           <Plus className="h-4 w-4" /> Add
         </Button>
       </form>
+      <p className="text-xs text-muted-foreground mt-3">
+        Import format: CSV or Excel with columns - Name, Dept/Emp Number, Rate 1, Rate 2, Special Rate
+      </p>
     </div>
   );
 
