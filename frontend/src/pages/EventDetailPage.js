@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X, Eye, Edit3, Printer, GripVertical, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X, Eye, Edit3, Printer, GripVertical, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
 
 const DAYS = [1,2,3,4,5,6,7,8,9,10];
 
@@ -36,6 +36,7 @@ export default function EventDetailPage() {
   const [dragIdx, setDragIdx] = useState(null);
   const [sortField, setSortField] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
+  const [empFilter, setEmpFilter] = useState('');
 
   const loadEvent = useCallback(async () => {
     try {
@@ -362,12 +363,25 @@ export default function EventDetailPage() {
     </div>
   );
 
-  const renderEmployeesTab = () => (
+  const renderEmployeesTab = () => {
+    const q = empFilter.toLowerCase();
+    const filtered = q ? employees.filter(e => e.name.toLowerCase().includes(q) || (e.dept_emp_num || '').toLowerCase().includes(q)) : employees;
+    return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">
-          {employees.length} Employee{employees.length !== 1 ? 's' : ''}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">
+            {employees.length} Employee{employees.length !== 1 ? 's' : ''}
+          </p>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input value={empFilter} onChange={e => setEmpFilter(e.target.value)}
+              placeholder="Filter by name or dept..."
+              className="rounded-sm pl-7 h-8 w-56 text-sm" data-testid="employee-search" />
+            {empFilter && <button onClick={() => setEmpFilter('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="h-3 w-3" /></button>}
+          </div>
+          {q && <span className="text-xs text-muted-foreground">{filtered.length} match{filtered.length !== 1 ? 'es' : ''}</span>}
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" className="rounded-sm gap-2 text-sm" onClick={handleDownloadTemplate} data-testid="download-template-button">
             <Download className="h-4 w-4" /> Template
@@ -399,7 +413,7 @@ export default function EventDetailPage() {
             </tr>
           </thead>
           <tbody>
-            {employees.map((emp, i) => (
+            {filtered.map((emp, i) => (
               editingEmp === emp.id ? (
                 <tr key={emp.id} className="bg-primary/5">
                   <td></td>
@@ -500,7 +514,7 @@ export default function EventDetailPage() {
         Import format: CSV or Excel with columns - Name, Dept/Emp Number, Rate 1, Rate 2, Special Rate
       </p>
     </div>
-  );
+  ); };
 
   const renderDailyStatement = (dayNum) => {
     if (!dailyStatement || dailyStatement.day !== dayNum) return <p className="text-muted-foreground text-sm p-4">Loading statement...</p>;
