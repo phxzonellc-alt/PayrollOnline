@@ -1,0 +1,88 @@
+{
+  "project_context": {
+    "domain": "Finance & Enterprise SaaS",
+    "theme": "Light",
+    "archetype": "Archetype 4 (Swiss & High-Contrast)",
+    "vibe": "Authority, clarity, high-density, precise ledger."
+  },
+  "typography": {
+    "headings": "Cabinet Grotesk",
+    "body": "IBM Plex Sans",
+    "data_and_numbers": "JetBrains Mono",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl tracking-tight font-black",
+      "h2": "text-2xl sm:text-3xl tracking-tight font-bold",
+      "h3": "text-xl font-semibold",
+      "h4": "text-lg font-medium",
+      "body": "text-sm leading-relaxed",
+      "labels": "text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground",
+      "data": "font-mono text-sm tracking-tight text-foreground"
+    }
+  },
+  "colors": {
+    "background": "210 20% 98%",
+    "foreground": "220 10% 10%",
+    "primary": "224 76% 48%",
+    "primary_foreground": "0 0% 100%",
+    "card": "0 0% 100%",
+    "card_foreground": "220 10% 10%",
+    "border": "220 10% 90%",
+    "muted": "220 10% 96%",
+    "muted_foreground": "220 10% 40%",
+    "accent": "220 10% 94%",
+    "accent_foreground": "220 10% 10%",
+    "destructive": "0 84% 60%",
+    "destructive_foreground": "0 0% 100%",
+    "ring": "224 76% 48%",
+    "radius": "0.25rem"
+  },
+  "layout_and_spacing": {
+    "grid_strategy": "MODE B: THE CONTROL ROOM GRID",
+    "spacing_scale": "p-1, p-2, p-4, p-6, p-8",
+    "container_padding": "p-6",
+    "gap": "gap-4",
+    "border_radius": "0.25rem (4px) - Sharp, precise edges.",
+    "alignment": "Optical alignment over geometrical. Numbers right-aligned, text left-aligned in tables."
+  },
+  "surface_styles": {
+    "dashboards": "Flat background, 1px subtle border, no shadow. Hover: slight lift.",
+    "tables": "Grid Borders ('Technical' Look) - Expose the skeleton. border-collapse style layout, border-r border-b on cells.",
+    "headers": "Solid background with hard bottom border. Sticky positioning z-50.",
+    "widgets": "Use sharp edges, cardless rectangular sections separated by 1px borders."
+  },
+  "components_instructions": {
+    "general": "Use pure HTML + Tailwind for structural layouts, heavily customized Shadcn for forms/tables/dropdowns.",
+    "buttons": "Sharp corners (rounded-sm), clear hover states (hover:bg-primary/90 hover:text-white). Focus ring mandatory.",
+    "tables": "Dense, F-pattern scanning. Use sticky headers, right-aligned numbers, monospaced fonts for currency/rates. Zebra striping for readability.",
+    "forms": "Use Shadcn Input, Select. Ensure 1px borders, high contrast focus rings. Do not use native input type='date', use Shadcn calendar.",
+    "icons": "Use Phosphor Icons (@phosphor-icons/react) for precise, dense interfaces."
+  },
+  "animations": {
+    "hover": "transition: transform 0.2s ease, background-color 0.2s ease;",
+    "lists": "Staggered entrance animations using framer-motion.",
+    "accessibility": "Respect prefers-reduced-motion."
+  },
+  "accessibility": {
+    "contrast": "Ensure APCA/WCAG AA contrast. All normal text min 4.5:1. Tint borders toward background hue.",
+    "testing_attributes": "All interactive and key informational elements MUST have data-testid attribute (e.g., data-testid='login-submit-button').",
+    "focus": "High contrast focus states."
+  },
+  "image_urls": [
+    {
+      "category": "avatar",
+      "url": "https://images.unsplash.com/photo-1707396172424-f3293f788364?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNDR8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBvZmZpY2UlMjB3b3JrZXIlMjBhdmF0YXJ8ZW58MHx8fHwxNzc2MTA0MjgzfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Admin placeholder avatar for top right profile menu"
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Update index.css root variables to match the color palette provided in the colors object. Use Tailwind's space-separated format (e.g., --background: 210 20% 98%;).",
+    "Update tailwind.config.js to match the border radius (0.25rem).",
+    "Install custom fonts via Google Fonts or Fontsource: Cabinet Grotesk, IBM Plex Sans, JetBrains Mono.",
+    "Install @phosphor-icons/react (yarn add @phosphor-icons/react).",
+    "Implement the layout using a dense 'Control Room' grid. The app is a data-heavy payroll system (MEBO), so emulate a highly refined spreadsheet interface.",
+    "Do NOT use Inter, Roboto, Lato, or standard sans-serif for headings. Use Cabinet Grotesk.",
+    "Use JetBrains Mono (font-mono) for all numerical data, rates, hours, totals, and calculations to ensure decimal points align perfectly in the Daily Time Entry and Summary tables.",
+    "Avoid floating cards with drop shadows. Use a connected 1px border grid system (border-collapse style) to separate widgets.",
+    "Add 'data-testid' to every button, form field, and interactive element for automated testing requirements."
+  ]
+}
