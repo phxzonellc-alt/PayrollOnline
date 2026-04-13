@@ -223,6 +223,22 @@ export default function EventDetailPage() {
     } catch { toast.error('PDF export failed'); }
   };
 
+  const handleFullReportPdf = async () => {
+    try {
+      toast.info('Generating full report...');
+      const url = `${process.env.REACT_APP_BACKEND_URL}/api/events/${id}/export/full-pdf`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${event?.event_name || 'payroll'}_full_report.pdf`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      toast.success('Full report PDF exported');
+    } catch { toast.error('Full report export failed'); }
+  };
+
   if (loading || !event) return <div className="min-h-screen bg-background flex items-center justify-center"><p className="text-muted-foreground">Loading...</p></div>;
 
   const fp = event.fund_pct || 0.02;
@@ -654,7 +670,10 @@ export default function EventDetailPage() {
               <FileSpreadsheet className="h-4 w-4" /> Excel
             </Button>
             <Button variant="outline" className="rounded-sm gap-2 text-sm" onClick={() => handleExport('pdf')} data-testid="export-pdf-button">
-              <FileText className="h-4 w-4" /> PDF
+              <FileText className="h-4 w-4" /> Summary PDF
+            </Button>
+            <Button className="rounded-sm gap-2 text-sm" onClick={handleFullReportPdf} data-testid="export-full-pdf-button">
+              <FileText className="h-4 w-4" /> Full Report PDF
             </Button>
           </div>
         </div>
@@ -741,7 +760,10 @@ export default function EventDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="rounded-sm gap-2" onClick={() => handleExport('excel')} data-testid="header-export-excel">
-            <Download className="h-3 w-3" /> Export
+            <FileSpreadsheet className="h-3 w-3" /> Excel
+          </Button>
+          <Button variant="outline" size="sm" className="rounded-sm gap-2" onClick={handleFullReportPdf} data-testid="header-export-full-pdf">
+            <FileText className="h-3 w-3" /> Full Report
           </Button>
         </div>
       </header>

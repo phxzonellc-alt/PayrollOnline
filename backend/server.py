@@ -502,6 +502,254 @@ async def export_daily_statement_pdf(event_id: str, day: int, request: Request):
     return StreamingResponse(output, media_type="application/pdf",
                              headers={"Content-Disposition": f'attachment; filename="{name}_day{day}_statement.pdf"'})
 
+# ---- COMBINED FULL REPORT PDF ----
+def _pdf_company_branding(pdf, pw, co):
+    if co.get('company_name'):
+        pdf.set_font('Helvetica', 'B', 12)
+        pdf.cell(pw, 0.3, co['company_name'], new_x="LMARGIN", new_y="NEXT")
+        parts = []
+        if co.get('company_email'):
+            parts.append(co['company_email'])
+        if co.get('company_phone'):
+            parts.append(co['company_phone'])
+        if parts:
+            pdf.set_font('Helvetica', '', 8)
+            pdf.cell(pw, 0.2, "  |  ".join(parts), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(0.1)
+
+def _pdf_daily_stmt_page(pdf, pw, stmt, day):
+    rh = 0.22
+    r2_cols = {3, 4, 5, 6}
+    pdf.set_font('Helvetica', 'B', 14)
+    pdf.cell(pw, 0.3, f"Daily Statement - Day {day}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 10)
+    pdf.cell(pw, 0.22, stmt.get("event_name", ""), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 8)
+    info = [f"Employer: {stmt.get('employer','')}",  f"Venue: {stmt.get('venue','')}",
+            f"Job #: {stmt.get('job_number','')}"]
+    if stmt.get("day_date"):
+        info.append(f"Date: {stmt['day_date']}")
+    pdf.cell(pw, 0.2, "  |  ".join(info), new_x="LMARGIN", new_y="NEXT")
+    if stmt.get("day_note"):
+        pdf.set_font('Helvetica', 'I', 7)
+        pdf.cell(pw, 0.18, f"Note: {stmt['day_note']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 7)
+    pdf.cell(pw, 0.18, f"Fund: {stmt['fund_pct']*100:.1f}%  |  Benefit: {stmt['benefit_pct']*100:.1f}%  |  Deduction: {stmt['deduction_pct']*100:.1f}%", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(0.08)
+
+    headers = ["#", "Employee", "Dept/Emp #", "Hrly Rate", "S.T. Hrs", "O.T. Hrs", "D.T. Hrs",
+               "Special Rate", "SR Hrs", "Special Tot", "Total Hrs", "Benefit", "Fund", "Deduct", "Gross Salary"]
+    widths = [0.3, 1.4, 0.75, 0.6, 0.55, 0.55, 0.55, 0.65, 0.5, 0.6, 0.55, 0.65, 0.55, 0.55, 0.8]
+
+    def _draw_stmt_headers():
+        pdf.set_font('Helvetica', 'B', 7)
+        pdf.set_draw_color(180, 180, 180)
+        pdf.set_fill_color(230, 235, 245)
+        for i, h in enumerate(headers):
+            pdf.cell(widths[i], rh, h, border=1, fill=True, align='C')
+        pdf.ln()
+
+    _draw_stmt_headers()
+    emps = [e for e in stmt["employees"] if e["total_hours"] > 0 or e["sr_hours"] > 0]
+    pdf.set_font('Helvetica', '', 7)
+    for idx, emp in enumerate(emps):
+        if pdf.get_y() > 7.5:
+            pdf.add_page()
+            _pdf_company_branding(pdf, pw, stmt)
+            _draw_stmt_headers()
+            pdf.set_font('Helvetica', '', 7)
+        used_r2 = emp.get("used_r2", False)
+        vals = [str(idx+1), emp["name"][:22], emp["dept_emp_num"][:12],
+                f"{emp['hrly_rate']:.2f}",
+                f"{emp['st_hrs']:.1f}" if emp['st_hrs'] else "-",
+                f"{emp['ot_hrs']:.1f}" if emp['ot_hrs'] else "-",
+                f"{emp['dt_hrs']:.1f}" if emp['dt_hrs'] else "-",
+                f"{emp['special_rate']:.2f}" if emp['special_rate'] else "-",
+                f"{emp['sr_hours']:.1f}" if emp['sr_hours'] else "-",
+                f"{emp['special_tot']:.2f}" if emp['special_tot'] else "-",
+                f"{emp['total_hours']:.1f}", f"{emp['benefit_co']:.2f}",
+                f"{emp['fund_co']:.2f}", f"{emp['deduction']:.2f}", f"{emp['gross']:.2f}"]
+        for i, v in enumerate(vals):
+            align = 'L' if i <= 2 else 'R'
+            if used_r2 and i in r2_cols:
+                pdf.set_fill_color(255, 243, 224)
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=True)
+            elif idx % 2 == 1:
+                pdf.set_fill_color(245, 247, 250)
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=True)
+            else:
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=False)
+        pdf.ln()
+    # Totals
+    if emps:
+        pdf.set_font('Helvetica', 'B', 7)
+        pdf.set_fill_color(220, 225, 240)
+        tots = ["", "TOTALS", "", "",
+                f"{sum(e['st_hrs'] for e in emps):.1f}", f"{sum(e['ot_hrs'] for e in emps):.1f}",
+                f"{sum(e['dt_hrs'] for e in emps):.1f}", "",
+                f"{sum(e['sr_hours'] for e in emps):.1f}", f"{sum(e['special_tot'] for e in emps):.2f}",
+                f"{sum(e['total_hours'] for e in emps):.1f}", f"{sum(e['benefit_co'] for e in emps):.2f}",
+                f"{sum(e['fund_co'] for e in emps):.2f}", f"{sum(e['deduction'] for e in emps):.2f}",
+                f"{sum(e['gross'] for e in emps):.2f}"]
+        for i, v in enumerate(tots):
+            pdf.cell(widths[i], rh + 0.03, v, border=1, align='L' if i <= 2 else 'R', fill=True)
+        pdf.ln()
+
+def _pdf_summary_page(pdf, pw, data):
+    rh = 0.22
+    r2_cols = {7, 8, 9, 10}
+    pdf.set_font('Helvetica', 'B', 14)
+    pdf.cell(pw, 0.3, "Payroll Summary - All Days", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 10)
+    pdf.cell(pw, 0.22, f"{data['event']['event_name']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 8)
+    pdf.cell(pw/3, 0.2, f"Employer: {data['event']['employer']}")
+    pdf.cell(pw/3, 0.2, f"Venue: {data['event']['venue']}")
+    pdf.cell(pw/3, 0.2, f"Job #: {data['event']['job_number']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 7)
+    pdf.cell(pw, 0.18, f"Fund: {data['fund_pct']*100:.1f}%  |  Benefit: {data['benefit_pct']*100:.1f}%  |  Deduction: {data['deduction_pct']*100:.1f}%", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(0.08)
+
+    headers = ["#", "Employee", "Dept#", "Rate 1", "R1 ST", "R1 OT", "R1 DT", "Rate 2",
+               "R2 ST", "R2 OT", "R2 DT", "SR Rate", "SR Hrs", "SR Tot", "Tot Hrs",
+               "Benefit", "Fund", "Deduct", "Gross Total"]
+    widths = [0.3, 1.2, 0.65, 0.5, 0.45, 0.45, 0.45, 0.5,
+              0.45, 0.45, 0.45, 0.5, 0.42, 0.52, 0.48, 0.58, 0.5, 0.5, 0.73]
+
+    def _draw_sum_headers():
+        pdf.set_font('Helvetica', 'B', 7)
+        pdf.set_draw_color(180, 180, 180)
+        for i, h in enumerate(headers):
+            if i in r2_cols:
+                pdf.set_fill_color(255, 224, 178)
+            else:
+                pdf.set_fill_color(230, 235, 245)
+            pdf.cell(widths[i], rh, h, border=1, fill=True, align='C')
+        pdf.ln()
+
+    _draw_sum_headers()
+    pdf.set_font('Helvetica', '', 7)
+    emps = data["employees"]
+    for idx, emp in enumerate(emps):
+        if pdf.get_y() > 7.5:
+            pdf.add_page()
+            _pdf_company_branding(pdf, pw, data['event'])
+            _draw_sum_headers()
+            pdf.set_font('Helvetica', '', 7)
+        vals = [str(idx+1), emp["name"][:18], emp["dept_emp_num"][:10],
+                f"{emp['rate1']:.2f}", f"{emp['r1_st']:.1f}", f"{emp['r1_ot']:.1f}", f"{emp['r1_dt']:.1f}",
+                f"{emp['rate2']:.2f}", f"{emp['r2_st']:.1f}", f"{emp['r2_ot']:.1f}", f"{emp['r2_dt']:.1f}",
+                f"{emp['special_rate']:.2f}", f"{emp['sr_hours']:.1f}", f"{emp['special_tot']:.2f}",
+                f"{emp['total_hours']:.1f}", f"{emp['benefit_co']:.2f}", f"{emp['fund_co']:.2f}",
+                f"{emp['deduction']:.2f}", f"{emp['gross']:.2f}"]
+        for i, v in enumerate(vals):
+            align = 'L' if i <= 2 else 'R'
+            if i in r2_cols:
+                pdf.set_fill_color(255, 243, 224)
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=True)
+            elif idx % 2 == 1:
+                pdf.set_fill_color(245, 247, 250)
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=True)
+            else:
+                pdf.cell(widths[i], rh, v, border=1, align=align, fill=False)
+        pdf.ln()
+    # Summary totals
+    if emps:
+        pdf.set_font('Helvetica', 'B', 7)
+        tot = ["", "TOTALS", "",
+               "", f"{sum(e['r1_st'] for e in emps):.1f}", f"{sum(e['r1_ot'] for e in emps):.1f}",
+               f"{sum(e['r1_dt'] for e in emps):.1f}", "",
+               f"{sum(e['r2_st'] for e in emps):.1f}", f"{sum(e['r2_ot'] for e in emps):.1f}",
+               f"{sum(e['r2_dt'] for e in emps):.1f}", "",
+               f"{sum(e['sr_hours'] for e in emps):.1f}", f"{sum(e['special_tot'] for e in emps):.2f}",
+               f"{sum(e['total_hours'] for e in emps):.1f}", f"{sum(e['benefit_co'] for e in emps):.2f}",
+               f"{sum(e['fund_co'] for e in emps):.2f}", f"{sum(e['deduction'] for e in emps):.2f}",
+               f"{sum(e['gross'] for e in emps):.2f}"]
+        for i, v in enumerate(tot):
+            if i in r2_cols:
+                pdf.set_fill_color(255, 236, 200)
+            else:
+                pdf.set_fill_color(220, 225, 240)
+            pdf.cell(widths[i], rh + 0.03, v, border=1, align='L' if i <= 2 else 'R', fill=True)
+        pdf.ln()
+
+@api_router.get("/events/{event_id}/export/full-pdf")
+async def export_full_pdf(event_id: str, request: Request):
+    await get_current_user(request)
+    sum_data = await _get_sum_totals_data(event_id)
+    co = sum_data['event']
+    pw = 11 - 1.0
+
+    pdf = FPDF(orientation='L', unit='in', format='Letter')
+    pdf.set_auto_page_break(auto=True, margin=0.5)
+
+    # --- Cover / Title page ---
+    pdf.add_page()
+    pdf.set_left_margin(0.5)
+    pdf.set_right_margin(0.5)
+    _pdf_company_branding(pdf, pw, co)
+    pdf.ln(0.3)
+    pdf.set_font('Helvetica', 'B', 22)
+    pdf.cell(pw, 0.5, "Full Payroll Report", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 14)
+    pdf.cell(pw, 0.35, co.get('event_name', ''), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(0.15)
+    pdf.set_font('Helvetica', '', 10)
+    for label, val in [("Employer", co.get('employer','')), ("Venue", co.get('venue','')),
+                       ("Job #", co.get('job_number','')), ("Payroll", co.get('payroll_name',''))]:
+        if val:
+            pdf.cell(pw, 0.25, f"{label}: {val}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(0.15)
+    pdf.set_font('Helvetica', '', 9)
+    pdf.cell(pw, 0.22, f"Fund: {sum_data['fund_pct']*100:.1f}%  |  Benefit: {sum_data['benefit_pct']*100:.1f}%  |  Deduction: {sum_data['deduction_pct']*100:.1f}%", new_x="LMARGIN", new_y="NEXT")
+
+    # Table of contents
+    pdf.ln(0.3)
+    pdf.set_font('Helvetica', 'B', 11)
+    pdf.cell(pw, 0.3, "Contents", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 9)
+
+    # Determine which days have data
+    days_with_data = []
+    for day_num in range(1, 11):
+        count = await db.time_entries.count_documents({"event_id": event_id, "day_number": day_num})
+        if count > 0:
+            day_date = (co.get('days') or {}).get(str(day_num), {}).get('date', '')
+            days_with_data.append((day_num, day_date))
+            label = f"Day {day_num}" + (f" - {day_date}" if day_date else "")
+            pdf.cell(pw, 0.22, f"  {label}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(pw, 0.22, "  Summary - All Days", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(0.1)
+    pdf.set_font('Helvetica', 'I', 8)
+    pdf.cell(pw, 0.2, f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}  |  {len(days_with_data)} day(s)  |  {len(sum_data['employees'])} employee(s)")
+
+    # --- Daily statement pages ---
+    for day_num, day_date in days_with_data:
+        pdf.add_page()
+        pdf.set_left_margin(0.5)
+        pdf.set_right_margin(0.5)
+        _pdf_company_branding(pdf, pw, co)
+        stmt = await get_daily_statement(event_id, day_num, request)
+        _pdf_daily_stmt_page(pdf, pw, stmt, day_num)
+
+    # --- Summary page ---
+    pdf.add_page()
+    pdf.set_left_margin(0.5)
+    pdf.set_right_margin(0.5)
+    _pdf_company_branding(pdf, pw, co)
+    _pdf_summary_page(pdf, pw, sum_data)
+
+    # Footer on last page
+    pdf.ln(0.15)
+    pdf.set_font('Helvetica', 'I', 7)
+    pdf.cell(pw, 0.18, f"End of Report  |  Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+
+    pdf_bytes = pdf.output()
+    output = BytesIO(pdf_bytes)
+    name = co.get('event_name', '') or 'payroll'
+    return StreamingResponse(output, media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{name}_full_report.pdf"'})
+
 # ---- CSV TEMPLATE DOWNLOAD ----
 @api_router.get("/employees/template")
 async def download_employee_template(request: Request):
