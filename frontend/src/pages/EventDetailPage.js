@@ -682,11 +682,21 @@ export default function EventDetailPage() {
                         <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
                         <td className="text-sm font-medium max-w-[140px] truncate">{emp.name}</td>
                         <td className="text-xs text-muted-foreground">{emp.dept_emp_num}</td>
-                        {hourFields.map(f => (
+                        {hourFields.map((f, fi) => (
                           <td key={f} className={`p-0 ${f.includes('r2') ? 'r2-col' : ''}`}>
                             <input type="number" step="0.5" min="0" value={getVal(emp.id,f) || ''}
                               onChange={e => updateHour(emp.id, f, e.target.value)}
                               data-testid={`entry-${emp.id}-${f}`}
+                              tabIndex={i * 7 + fi + 1}
+                              data-row={i} data-col={fi}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  const nextRow = e.shiftKey ? i - 1 : i + 1;
+                                  const next = e.currentTarget.closest('tbody').querySelector(`[data-row="${nextRow}"][data-col="${fi}"]`);
+                                  if (next) next.focus();
+                                }
+                              }}
                               placeholder="0" />
                           </td>
                         ))}
