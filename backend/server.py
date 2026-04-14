@@ -76,6 +76,12 @@ async def require_admin(request: Request):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
+async def require_editor(request: Request):
+    user = await get_current_user(request)
+    if user.get("role") not in ("admin", "user"):
+        raise HTTPException(status_code=403, detail="Edit access required")
+    return user
+
 # ---- AUTH ENDPOINTS ----
 @api_router.post("/auth/login")
 async def login(request: Request, response: Response):
@@ -142,7 +148,7 @@ async def create_user(request: Request):
     if existing:
         raise HTTPException(status_code=400, detail="Email already exists")
     role = body.get("role", "viewer")
-    if role not in ("admin", "viewer"):
+    if role not in ("admin", "user", "viewer"):
         role = "viewer"
     user = {
         "email": email,
@@ -170,7 +176,7 @@ async def update_user(user_id: str, request: Request):
         if existing:
             raise HTTPException(status_code=400, detail="Email already exists")
         update["email"] = new_email
-    if "role" in body and body["role"] in ("admin", "viewer"):
+    if "role" in body and body["role"] in ("admin", "user", "viewer"):
         if user_id == str(admin["_id"]) and body["role"] != "admin":
             raise HTTPException(status_code=400, detail="Cannot demote yourself")
         update["role"] = body["role"]
@@ -198,7 +204,7 @@ async def delete_user(user_id: str, request: Request):
 # ---- EVENTS CRUD ----
 @api_router.post("/events")
 async def create_event(request: Request):
-    await require_admin(request)
+    await require_editor(request)
     body = await request.json()
     event = {
         "job_number": body.get("job_number", ""),
@@ -243,7 +249,7 @@ async def get_event(event_id: str, request: Request):
 
 @api_router.put("/events/{event_id}")
 async def update_event(event_id: str, request: Request):
-    await require_admin(request)
+    await require_editor(request)
     body = await request.json()
     body.pop("id", None)
     body.pop("_id", None)
@@ -261,7 +267,7 @@ async def update_event(event_id: str, request: Request):
 
 @api_router.delete("/events/{event_id}")
 async def delete_event(event_id: str, request: Request):
-    await require_admin(request)
+    await require_editor(request)
     await db.events.delete_one({"_id": ObjectId(event_id)})
     await db.employees.delete_many({"event_id": event_id})
     await db.time_entries.delete_many({"event_id": event_id})
@@ -278,7 +284,7 @@ async def list_employees(event_id: str, request: Request):
 
 @api_router.post("/events/{event_id}/employees")
 async def add_employee(event_id: str, request: Request):
-    await require_admin(request)
+    await require_editor(request)
     body = await request.json()
     count = await db.employees.count_documents({"event_id": event_id})
     emp = {
@@ -297,7 +303,7 @@ async def add_employee(event_id: str, request: Request):
 
 @api_router.put("/events/{event_id}/employees/{emp_id}")
 async def update_employee(event_id: str, emp_id: str, request: Request):
-    await get_current_user(request)
+    await require_editor(request)
     body = await request.json()
     update = {}
     for field in ["name", "dept_emp_num"]:
@@ -316,7 +322,7 @@ async def update_employee(event_id: str, emp_id: str, request: Request):
 
 @api_router.delete("/events/{event_id}/employees/{emp_id}")
 async def delete_employee(event_id: str, emp_id: str, request: Request):
-    await require_admin(request)
+    await require_editor(request)
     await db.employees.delete_one({"_id": ObjectId(emp_id), "event_id": event_id})
     await db.time_entries.delete_many({"event_id": event_id, "employee_id": emp_id})
     return {"message": "Employee deleted"}
@@ -324,7 +330,7 @@ async def delete_employee(event_id: str, emp_id: str, request: Request):
 # ---- EMPLOYEE REORDER ----
 @api_router.post("/events/{event_id}/employees/reorder")
 async def reorder_employees(event_id: str, request: Request):
-    await require_admin(request)
+    await require_editor(request)
     body = await request.json()
     order = body.get("order", [])
     for idx, emp_id in enumerate(order):
@@ -340,7 +346,7 @@ async def reorder_employees(event_id: str, request: Request):
 # ---- BULK EMPLOYEE IMPORT ----
 @api_router.post("/events/{event_id}/employees/import")
 async def import_employees(event_id: str, request: Request, file: UploadFile = File(...)):
-    await require_admin(request)
+    await require_editor(request)
     content = await file.read()
     filename = file.filename or ""
     imported = []

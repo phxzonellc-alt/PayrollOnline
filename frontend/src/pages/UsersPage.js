@@ -8,7 +8,7 @@ import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { Plus, ArrowLeft, Trash2, Pencil, Check, X, Shield, Eye } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, Pencil, Check, X, Shield, Eye, UserCheck } from 'lucide-react';
 
 export default function UsersPage() {
   const { user: currentUser, logout } = useAuth();
@@ -121,7 +121,8 @@ export default function UsersPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admin">Admin (Full Access)</SelectItem>
+                      <SelectItem value="admin">Admin (Full Access + User Mgmt)</SelectItem>
+                      <SelectItem value="user">User (Full Access)</SelectItem>
                       <SelectItem value="viewer">Viewer (Read Only)</SelectItem>
                     </SelectContent>
                   </Select>
@@ -151,8 +152,9 @@ export default function UsersPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="viewer">Viewer</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="viewer">Viewer</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -168,8 +170,8 @@ export default function UsersPage() {
               ) : (
                 <div key={u.id} className="flex items-center justify-between px-4 py-3" data-testid={`user-row-${u.id}`}>
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-sm flex items-center justify-center ${u.role === 'admin' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                      {u.role === 'admin' ? <Shield className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    <div className={`w-8 h-8 rounded-sm flex items-center justify-center ${u.role === 'admin' ? 'bg-primary/10 text-primary' : u.role === 'user' ? 'bg-green-50 text-green-600' : 'bg-muted text-muted-foreground'}`}>
+                      {u.role === 'admin' ? <Shield className="h-4 w-4" /> : u.role === 'user' ? <UserCheck className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </div>
                     <div>
                       <p className="text-sm font-semibold">{u.name || u.email}</p>

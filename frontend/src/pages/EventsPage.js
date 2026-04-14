@@ -18,6 +18,7 @@ export default function EventsPage() {
   const [form, setForm] = useState({ event_name: '', employer: '', job_number: '', venue: '' });
 
   const isAdmin = user?.role === 'admin';
+  const isEditor = user?.role === 'admin' || user?.role === 'user';
 
   useEffect(() => { loadEvents(); }, []);
 
@@ -75,7 +76,7 @@ export default function EventsPage() {
       <main className="p-6 max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="font-heading text-2xl font-bold tracking-tight">Events</h2>
-          {isAdmin && (
+          {isEditor && (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button data-testid="create-event-button" className="rounded-sm gap-2">
@@ -140,7 +141,7 @@ export default function EventsPage() {
                     </p>
                   </div>
                 </div>
-                {isAdmin && (
+                {isEditor && (
                 <Button variant="ghost" size="icon" className="rounded-sm text-muted-foreground hover:text-destructive"
                   onClick={(e) => handleDelete(ev.id, e)} data-testid={`delete-event-${ev.id}`}>
                   <Trash2 className="h-4 w-4" />
