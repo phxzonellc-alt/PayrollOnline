@@ -377,6 +377,127 @@ Another Worker,301,22,27,12"""
         )
         return success
 
+    def test_user_management(self):
+        """Test user management endpoints (admin only)"""
+        # Test listing users
+        success, response = self.run_test(
+            "List Users (Admin)",
+            "GET",
+            "users",
+            200
+        )
+        if success:
+            print(f"   Found {len(response)} users")
+        
+        if not success:
+            return False
+        
+        # Test creating a viewer user
+        viewer_data = {
+            "email": "test.viewer@demo.com",
+            "password": "test123",
+            "name": "Demo Viewer",
+            "role": "viewer"
+        }
+        
+        success, response = self.run_test(
+            "Create Viewer User",
+            "POST",
+            "users",
+            200,
+            data=viewer_data
+        )
+        
+        viewer_id = None
+        if success and 'id' in response:
+            viewer_id = response['id']
+            print(f"   Created viewer user with ID: {viewer_id}")
+            print(f"   User role: {response.get('role', 'Unknown')}")
+        
+        if not success:
+            return False
+        
+        # Test updating the viewer user
+        if viewer_id:
+            update_data = {
+                "name": "Demo Viewer Updated",
+                "role": "viewer"
+            }
+            
+            success, response = self.run_test(
+                "Update Viewer User",
+                "PUT",
+                f"users/{viewer_id}",
+                200,
+                data=update_data
+            )
+            
+            if success:
+                print(f"   Updated user name: {response.get('name', 'Unknown')}")
+        
+        return success
+
+    def test_viewer_login(self):
+        """Test viewer user login"""
+        success, response = self.run_test(
+            "Viewer Login",
+            "POST",
+            "auth/login",
+            200,
+            data={"email": "test.viewer@demo.com", "password": "test123"}
+        )
+        if success:
+            print(f"   Logged in as viewer: {response.get('email', 'Unknown')}")
+            print(f"   Role: {response.get('role', 'Unknown')}")
+        return success
+
+    def test_viewer_permissions(self):
+        """Test viewer permissions - should be able to read but not write"""
+        # Test that viewer can read events
+        success, response = self.run_test(
+            "Viewer - List Events (Should Work)",
+            "GET",
+            "events",
+            200
+        )
+        
+        if not success:
+            return False
+        
+        # Test that viewer cannot create events (should fail)
+        event_data = {
+            "event_name": "Viewer Test Event",
+            "job_number": "9999",
+            "employer": "Test Corp"
+        }
+        
+        success, response = self.run_test(
+            "Viewer - Create Event (Should Fail)",
+            "POST",
+            "events",
+            403,  # Expecting 403 Forbidden
+            data=event_data
+        )
+        
+        if not success:
+            print("   ❌ Expected 403 Forbidden for viewer creating event")
+            return False
+        
+        # Test that viewer cannot access user management
+        success, response = self.run_test(
+            "Viewer - List Users (Should Fail)",
+            "GET",
+            "users",
+            403,  # Expecting 403 Forbidden
+        )
+        
+        if not success:
+            print("   ❌ Expected 403 Forbidden for viewer accessing users")
+            return False
+        
+        print("   ✅ Viewer permissions correctly restricted")
+        return True
+
     def test_logout(self):
         """Test logout"""
         success, response = self.run_test(
@@ -388,18 +509,23 @@ Another Worker,301,22,27,12"""
         return success
 
 def main():
-    print("🚀 Starting Payroll System API Tests")
-    print("=" * 50)
+    print("🚀 Starting Payroll System API Tests with User Management")
+    print("=" * 60)
     
     tester = PayrollAPITester()
     
     # Run authentication tests
     if not tester.test_login():
-        print("❌ Login failed, stopping tests")
+        print("❌ Admin login failed, stopping tests")
         return 1
     
     if not tester.test_auth_me():
         print("❌ Auth verification failed")
+        return 1
+    
+    # Test user management (admin only)
+    if not tester.test_user_management():
+        print("❌ User management tests failed")
         return 1
     
     # Run event management tests
@@ -464,13 +590,27 @@ def main():
         print("❌ PDF export failed")
         return 1
     
-    # Test logout
+    # Test logout admin
     if not tester.test_logout():
-        print("❌ Logout failed")
+        print("❌ Admin logout failed")
+        return 1
+    
+    # Test viewer login and permissions
+    if not tester.test_viewer_login():
+        print("❌ Viewer login failed")
+        return 1
+    
+    if not tester.test_viewer_permissions():
+        print("❌ Viewer permission tests failed")
+        return 1
+    
+    # Test final logout
+    if not tester.test_logout():
+        print("❌ Viewer logout failed")
         return 1
     
     # Print final results
-    print("\n" + "=" * 50)
+    print("\n" + "=" * 60)
     print(f"📊 Tests completed: {tester.tests_passed}/{tester.tests_run} passed")
     
     if tester.tests_passed == tester.tests_run:

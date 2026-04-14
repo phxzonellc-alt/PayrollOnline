@@ -22,7 +22,8 @@ const $f = (v) => '$' + (v || 0).toLocaleString('en-US', { minimumFractionDigits
 export default function EventDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === 'admin';
   const [event, setEvent] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [timeEntries, setTimeEntries] = useState({});
@@ -432,9 +433,9 @@ export default function EventDetailPage() {
           ))}
         </div>
       </div>
-      <Button onClick={saveEvent} disabled={saving} className="rounded-sm gap-2" data-testid="save-info-button">
+      {isAdmin && <Button onClick={saveEvent} disabled={saving} className="rounded-sm gap-2" data-testid="save-info-button">
         <Save className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Information'}
-      </Button>
+      </Button>}
     </div>
   );
 
@@ -457,6 +458,7 @@ export default function EventDetailPage() {
           </div>
           {q && <span className="text-xs text-muted-foreground">{filtered.length} match{filtered.length !== 1 ? 'es' : ''}</span>}
         </div>
+        {isAdmin && (
         <div className="flex gap-2">
           <Button variant="outline" className="rounded-sm gap-2 text-sm" onClick={handleDownloadTemplate} data-testid="download-template-button">
             <Download className="h-4 w-4" /> Template
@@ -468,6 +470,7 @@ export default function EventDetailPage() {
             </Button>
           </label>
         </div>
+        )}
       </div>
       <div className="overflow-x-auto">
         <table className="payroll-table w-full border-collapse">
@@ -484,7 +487,7 @@ export default function EventDetailPage() {
               <th className="text-right">Rate 1</th>
               <th className="text-right">Rate 2</th>
               <th className="text-right">Special Rate</th>
-              <th className="w-20 text-center">Actions</th>
+              {isAdmin && <th className="w-20 text-center">Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -523,20 +526,23 @@ export default function EventDetailPage() {
                 </tr>
               ) : (
                 <tr key={emp.id}
-                  draggable
-                  onDragStart={() => handleDragStart(i)}
-                  onDragOver={handleDragOver}
-                  onDrop={() => handleDrop(i)}
+                  draggable={isAdmin}
+                  onDragStart={() => isAdmin && handleDragStart(i)}
+                  onDragOver={isAdmin ? handleDragOver : undefined}
+                  onDrop={() => isAdmin && handleDrop(i)}
                   className={`${i % 2 === 0 ? '' : 'bg-muted/30'} ${dragIdx === i ? 'opacity-40' : ''} transition-opacity`}>
+                  {isAdmin ? (
                   <td className="cursor-grab active:cursor-grabbing px-1" data-testid={`drag-handle-${emp.id}`}>
                     <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
                   </td>
+                  ) : <td></td>}
                   <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
                   <td>{emp.name}</td>
                   <td>{emp.dept_emp_num}</td>
                   <td className="text-right font-mono">{$f(emp.rate1)}</td>
                   <td className="text-right font-mono">{$f(emp.rate2)}</td>
                   <td className="text-right font-mono">{$f(emp.special_rate)}</td>
+                  {isAdmin && (
                   <td className="text-center">
                     <div className="flex gap-1 justify-center">
                       <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm text-muted-foreground hover:text-primary"
@@ -549,12 +555,15 @@ export default function EventDetailPage() {
                       </Button>
                     </div>
                   </td>
+                  )}
                 </tr>
               )
             ))}
           </tbody>
         </table>
       </div>
+      {isAdmin && (
+      <>
       <form onSubmit={addEmployee} className="mt-4 flex gap-2 items-end border-t border-border pt-4">
         <div className="flex-1">
           <Label className="text-xs text-muted-foreground">Name</Label>
@@ -588,6 +597,8 @@ export default function EventDetailPage() {
       <p className="text-xs text-muted-foreground mt-3">
         Import format: CSV or Excel with columns - Name, Dept/Emp Number, Rate 1, Rate 2, Special Rate
       </p>
+      </>
+      )}
     </div>
   ); };
 
@@ -708,7 +719,7 @@ export default function EventDetailPage() {
             </div>
             {dq && <span className="text-xs text-muted-foreground">{dayFiltered.length}/{employees.length}</span>}
           </div>
-          {!isStatement && (
+          {!isStatement && isAdmin && (
             <Button onClick={saveDay} disabled={saving} className="rounded-sm gap-2" data-testid="save-day-button">
               <Save className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Day'}
             </Button>
@@ -761,6 +772,7 @@ export default function EventDetailPage() {
                               data-testid={`entry-${emp.id}-${f}`}
                               tabIndex={i * 7 + fi + 1}
                               data-row={i} data-col={fi}
+                              readOnly={!isAdmin}
                               onKeyDown={e => {
                                 if (e.key === 'Enter') {
                                   e.preventDefault();

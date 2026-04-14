@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, FileSpreadsheet, LogOut, Trash2 } from 'lucide-react';
+import { Plus, FileSpreadsheet, LogOut, Trash2, Users } from 'lucide-react';
 
 export default function EventsPage() {
   const { user, logout } = useAuth();
@@ -16,6 +16,8 @@ export default function EventsPage() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ event_name: '', employer: '', job_number: '', venue: '' });
+
+  const isAdmin = user?.role === 'admin';
 
   useEffect(() => { loadEvents(); }, []);
 
@@ -57,7 +59,13 @@ export default function EventsPage() {
           <span className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">Payroll</span>
         </div>
         <div className="flex items-center gap-3">
+          {isAdmin && (
+            <Button variant="ghost" size="sm" onClick={() => navigate('/users')} data-testid="manage-users-button" className="rounded-sm gap-2 text-xs">
+              <Users className="h-4 w-4" /> Users
+            </Button>
+          )}
           <span className="text-sm text-muted-foreground">{user?.email}</span>
+          <span className="text-[10px] uppercase tracking-wider font-semibold border border-border rounded-sm px-1.5 py-0.5 text-muted-foreground">{user?.role}</span>
           <Button variant="ghost" size="sm" onClick={logout} data-testid="logout-button" className="rounded-sm">
             <LogOut className="h-4 w-4" />
           </Button>
@@ -67,6 +75,7 @@ export default function EventsPage() {
       <main className="p-6 max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="font-heading text-2xl font-bold tracking-tight">Events</h2>
+          {isAdmin && (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button data-testid="create-event-button" className="rounded-sm gap-2">
@@ -104,6 +113,7 @@ export default function EventsPage() {
               </form>
             </DialogContent>
           </Dialog>
+          )}
         </div>
 
         {loading ? (
@@ -130,10 +140,12 @@ export default function EventsPage() {
                     </p>
                   </div>
                 </div>
+                {isAdmin && (
                 <Button variant="ghost" size="icon" className="rounded-sm text-muted-foreground hover:text-destructive"
                   onClick={(e) => handleDelete(ev.id, e)} data-testid={`delete-event-${ev.id}`}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
+                )}
               </div>
             ))}
           </div>
