@@ -922,6 +922,56 @@ async def export_excel(event_id: str, request: Request):
     for col in ws.columns:
         max_len = max(len(str(cell.value or "")) for cell in col)
         ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 2, 8), 18)
+
+    # Grand Total summary section
+    emps = data["employees"]
+    t_gross = sum(e["gross"] for e in emps)
+    t_benefit = sum(e["benefit_co"] for e in emps)
+    t_fund = sum(e["fund_co"] for e in emps)
+    t_deduct = sum(e["deduction"] for e in emps)
+    gt = t_gross + t_benefit + t_fund + t_deduct
+
+    ws.append([])
+    gt_fill = PatternFill(start_color="E8EAF0", end_color="E8EAF0", fill_type="solid")
+    gt_bold = Font(bold=True, size=11)
+    gt_label_font = Font(size=10)
+    gt_total_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+
+    # Header
+    r = ws.max_row + 1
+    ws.cell(row=r, column=16, value="GRAND TOTAL").font = gt_bold
+    ws.cell(row=r, column=16).fill = gt_fill
+    ws.cell(row=r, column=16).border = border
+    ws.cell(row=r, column=16).alignment = Alignment(horizontal='center')
+    ws.merge_cells(start_row=r, start_column=16, end_row=r, end_column=18)
+    for c in [17, 18]:
+        ws.cell(row=r, column=c).border = border
+        ws.cell(row=r, column=c).fill = gt_fill
+
+    for label, val in [("Gross Salary", t_gross), ("Benefits", t_benefit), ("Fund", t_fund), ("Deductions", t_deduct)]:
+        r += 1
+        ws.cell(row=r, column=16, value=label).font = gt_label_font
+        ws.cell(row=r, column=16).border = border
+        ws.merge_cells(start_row=r, start_column=16, end_row=r, end_column=17)
+        ws.cell(row=r, column=17).border = border
+        ws.cell(row=r, column=18, value=val).font = gt_label_font
+        ws.cell(row=r, column=18).number_format = '$#,##0.00'
+        ws.cell(row=r, column=18).alignment = Alignment(horizontal='right')
+        ws.cell(row=r, column=18).border = border
+
+    r += 1
+    ws.cell(row=r, column=16, value="Grand Total").font = gt_bold
+    ws.cell(row=r, column=16).fill = gt_total_fill
+    ws.cell(row=r, column=16).border = border
+    ws.merge_cells(start_row=r, start_column=16, end_row=r, end_column=17)
+    ws.cell(row=r, column=17).border = border
+    ws.cell(row=r, column=17).fill = gt_total_fill
+    ws.cell(row=r, column=18, value=gt).font = gt_bold
+    ws.cell(row=r, column=18).number_format = '$#,##0.00'
+    ws.cell(row=r, column=18).alignment = Alignment(horizontal='right')
+    ws.cell(row=r, column=18).fill = gt_total_fill
+    ws.cell(row=r, column=18).border = border
+
     output = BytesIO()
     wb.save(output)
     output.seek(0)
