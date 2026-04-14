@@ -8,7 +8,7 @@ import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { Plus, ArrowLeft, Trash2, Pencil, Check, X, Shield, Eye, UserCheck } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, Pencil, Check, X, Shield, Eye, UserCheck, LogOut } from 'lucide-react';
 
 export default function UsersPage() {
   const { user: currentUser, logout } = useAuth();
@@ -82,7 +82,12 @@ export default function UsersPage() {
           <h1 className="font-heading text-2xl font-black tracking-tight">MEBO</h1>
           <span className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">User Management</span>
         </div>
-        <span className="text-sm text-muted-foreground">{currentUser?.email}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">{currentUser?.email}</span>
+          <Button variant="ghost" size="sm" onClick={logout} data-testid="logout-button" className="rounded-sm">
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </div>
       </header>
 
       <main className="p-6 max-w-3xl mx-auto">

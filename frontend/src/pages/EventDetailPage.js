@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X, Eye, Edit3, Printer, GripVertical, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
+import { ArrowLeft, Save, Download, Plus, Trash2, FileSpreadsheet, FileText, Upload, Pencil, Check, X, Eye, Edit3, Printer, GripVertical, ArrowUpDown, ArrowUp, ArrowDown, Search, LogOut } from 'lucide-react';
 
 const DAYS = [1,2,3,4,5,6,7,8,9,10];
 
@@ -929,6 +929,9 @@ export default function EventDetailPage() {
           </Button>
           <Button variant="outline" size="sm" className="rounded-sm gap-2" onClick={handleFullReportPdf} data-testid="header-export-full-pdf">
             <FileText className="h-3 w-3" /> Full Report
+          </Button>
+          <Button variant="ghost" size="sm" onClick={logout} data-testid="logout-button" className="rounded-sm ml-2">
+            <LogOut className="h-4 w-4" />
           </Button>
         </div>
       </header>
