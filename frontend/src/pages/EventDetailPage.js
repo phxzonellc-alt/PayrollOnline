@@ -532,9 +532,9 @@ export default function EventDetailPage() {
                   <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
                   <td>{emp.name}</td>
                   <td>{emp.dept_emp_num}</td>
-                  <td className="text-right font-mono">{emp.rate1?.toFixed(2)}</td>
-                  <td className="text-right font-mono">{emp.rate2?.toFixed(2)}</td>
-                  <td className="text-right font-mono">{emp.special_rate?.toFixed(2)}</td>
+                  <td className="text-right font-mono">${emp.rate1?.toFixed(2)}</td>
+                  <td className="text-right font-mono">${emp.rate2?.toFixed(2)}</td>
+                  <td className="text-right font-mono">${emp.special_rate?.toFixed(2)}</td>
                   <td className="text-center">
                     <div className="flex gap-1 justify-center">
                       <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm text-muted-foreground hover:text-primary"
@@ -625,18 +625,18 @@ export default function EventDetailPage() {
                   <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
                   <td className="text-sm font-medium">{emp.name}</td>
                   <td className="text-xs text-muted-foreground">{emp.dept_emp_num}</td>
-                  <td className={`font-mono text-xs text-right${r2c}`}>{emp.hrly_rate?.toFixed(2)}</td>
+                  <td className={`font-mono text-xs text-right${r2c}`}>${emp.hrly_rate?.toFixed(2)}</td>
                   <td className={`font-mono text-xs text-right${r2c}`}>{emp.st_hrs > 0 ? emp.st_hrs.toFixed(1) : '-'}</td>
                   <td className={`font-mono text-xs text-right${r2c}`}>{emp.ot_hrs > 0 ? emp.ot_hrs.toFixed(1) : '-'}</td>
                   <td className={`font-mono text-xs text-right${r2c}`}>{emp.dt_hrs > 0 ? emp.dt_hrs.toFixed(1) : '-'}</td>
-                  <td className="font-mono text-xs text-right">{emp.special_rate > 0 ? emp.special_rate.toFixed(2) : '-'}</td>
+                  <td className="font-mono text-xs text-right">{emp.special_rate > 0 ? '$' + emp.special_rate.toFixed(2) : '-'}</td>
                   <td className="font-mono text-xs text-right">{emp.sr_hours > 0 ? emp.sr_hours.toFixed(1) : '-'}</td>
-                  <td className="font-mono text-xs text-right">{emp.special_tot > 0 ? emp.special_tot.toFixed(2) : '-'}</td>
+                  <td className="font-mono text-xs text-right">{emp.special_tot > 0 ? '$' + emp.special_tot.toFixed(2) : '-'}</td>
                   <td className="font-mono text-xs text-right font-semibold">{emp.total_hours.toFixed(1)}</td>
-                  <td className="font-mono text-xs text-right">{emp.benefit_co.toFixed(2)}</td>
-                  <td className="font-mono text-xs text-right">{emp.fund_co.toFixed(2)}</td>
-                  <td className="font-mono text-xs text-right">{emp.deduction.toFixed(2)}</td>
-                  <td className="font-mono text-xs text-right font-bold">{emp.gross.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">${emp.benefit_co.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">${emp.fund_co.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">${emp.deduction.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right font-bold">${emp.gross.toFixed(2)}</td>
                 </tr>
               );
             })}
@@ -648,12 +648,12 @@ export default function EventDetailPage() {
                 <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.dt_hrs,0).toFixed(1)}</td>
                 <td></td>
                 <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.sr_hours,0).toFixed(1)}</td>
-                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.special_tot,0).toFixed(2)}</td>
+                <td className="font-mono text-xs text-right font-bold">${emps.reduce((s,e)=>s+e.special_tot,0).toFixed(2)}</td>
                 <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.total_hours,0).toFixed(1)}</td>
-                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.benefit_co,0).toFixed(2)}</td>
-                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.fund_co,0).toFixed(2)}</td>
-                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.deduction,0).toFixed(2)}</td>
-                <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+e.gross,0).toFixed(2)}</td>
+                <td className="font-mono text-xs text-right font-bold">${emps.reduce((s,e)=>s+e.benefit_co,0).toFixed(2)}</td>
+                <td className="font-mono text-xs text-right font-bold">${emps.reduce((s,e)=>s+e.fund_co,0).toFixed(2)}</td>
+                <td className="font-mono text-xs text-right font-bold">${emps.reduce((s,e)=>s+e.deduction,0).toFixed(2)}</td>
+                <td className="font-mono text-xs text-right font-bold">${emps.reduce((s,e)=>s+e.gross,0).toFixed(2)}</td>
               </tr>
             )}
             {emps.filter(e => e.total_hours > 0 || e.sr_hours > 0).length === 0 && (
@@ -732,15 +732,12 @@ export default function EventDetailPage() {
                     <th>SR</th>
                     <th>HRS</th>
                     <th>Gross</th>
-                    <th>Fund</th>
-                    <th>Benefit</th>
-                    <th>Deduct</th>
                   </tr>
                   <tr>
                     <th></th><th></th><th></th>
                     <th>ST</th><th>OT</th><th>DT</th>
                     <th className="r2-col">ST</th><th className="r2-col">OT</th><th className="r2-col">DT</th>
-                    <th>Hrs</th><th></th><th></th><th></th><th></th><th></th>
+                    <th>Hrs</th><th></th><th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -774,10 +771,7 @@ export default function EventDetailPage() {
                           </td>
                         ))}
                         <td className="calc-cell font-mono text-xs">{hrs.toFixed(1)}</td>
-                        <td className="calc-cell font-mono text-xs font-semibold">{gross.toFixed(2)}</td>
-                        <td className="calc-cell font-mono text-xs">{(fp*gross).toFixed(2)}</td>
-                        <td className="calc-cell font-mono text-xs">{(bp*gross).toFixed(2)}</td>
-                        <td className="calc-cell font-mono text-xs">{(dp*gross).toFixed(2)}</td>
+                        <td className="calc-cell font-mono text-xs font-semibold">${gross.toFixed(2)}</td>
                       </tr>
                     );
                   })}
@@ -795,27 +789,9 @@ export default function EventDetailPage() {
                         }, 0).toFixed(1)}
                       </td>
                       <td className="font-mono text-xs text-right font-bold">
-                        {employees.reduce((s, emp) => {
+                        ${employees.reduce((s, emp) => {
                           const te = timeEntries[emp.id] || {};
                           return s + calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
-                        }, 0).toFixed(2)}
-                      </td>
-                      <td className="font-mono text-xs text-right font-bold">
-                        {employees.reduce((s, emp) => {
-                          const te = timeEntries[emp.id] || {};
-                          return s + fp*calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
-                        }, 0).toFixed(2)}
-                      </td>
-                      <td className="font-mono text-xs text-right font-bold">
-                        {employees.reduce((s, emp) => {
-                          const te = timeEntries[emp.id] || {};
-                          return s + bp*calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
-                        }, 0).toFixed(2)}
-                      </td>
-                      <td className="font-mono text-xs text-right font-bold">
-                        {employees.reduce((s, emp) => {
-                          const te = timeEntries[emp.id] || {};
-                          return s + dp*calcGross(emp.rate1||0,emp.rate2||0,emp.special_rate||0,te.st_r1||0,te.ot_r1||0,te.dt_r1||0,te.st_r2||0,te.ot_r2||0,te.dt_r2||0,te.sr_hours||0);
                         }, 0).toFixed(2)}
                       </td>
                     </tr>
@@ -872,22 +848,22 @@ export default function EventDetailPage() {
                   <td className="font-mono text-xs text-muted-foreground">{i+1}</td>
                   <td className="text-sm font-medium">{emp.name}</td>
                   <td className="text-xs text-muted-foreground">{emp.dept_emp_num}</td>
-                  <td className="font-mono text-xs text-right">{emp.rate1?.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">${emp.rate1?.toFixed(2)}</td>
                   <td className="font-mono text-xs text-right">{emp.r1_st?.toFixed(1)}</td>
                   <td className="font-mono text-xs text-right">{emp.r1_ot?.toFixed(1)}</td>
                   <td className="font-mono text-xs text-right">{emp.r1_dt?.toFixed(1)}</td>
-                  <td className="font-mono text-xs text-right r2-col">{emp.rate2?.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right r2-col">${emp.rate2?.toFixed(2)}</td>
                   <td className="font-mono text-xs text-right r2-col">{emp.r2_st?.toFixed(1)}</td>
                   <td className="font-mono text-xs text-right r2-col">{emp.r2_ot?.toFixed(1)}</td>
                   <td className="font-mono text-xs text-right r2-col">{emp.r2_dt?.toFixed(1)}</td>
-                  <td className="font-mono text-xs text-right">{emp.special_rate?.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">${emp.special_rate?.toFixed(2)}</td>
                   <td className="font-mono text-xs text-right">{emp.sr_hours?.toFixed(1)}</td>
-                  <td className="font-mono text-xs text-right">{emp.special_tot?.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">${emp.special_tot?.toFixed(2)}</td>
                   <td className="font-mono text-xs text-right font-semibold">{emp.total_hours?.toFixed(1)}</td>
-                  <td className="font-mono text-xs text-right">{emp.benefit_co?.toFixed(2)}</td>
-                  <td className="font-mono text-xs text-right">{emp.fund_co?.toFixed(2)}</td>
-                  <td className="font-mono text-xs text-right">{emp.deduction?.toFixed(2)}</td>
-                  <td className="font-mono text-xs text-right font-bold">{emp.gross?.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">${emp.benefit_co?.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">${emp.fund_co?.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right">${emp.deduction?.toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right font-bold">${emp.gross?.toFixed(2)}</td>
                 </tr>
               ))}
               {emps.length > 0 && (
@@ -903,12 +879,12 @@ export default function EventDetailPage() {
                   ))}
                   <td></td>
                   <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+(e.sr_hours||0),0).toFixed(1)}</td>
-                  <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+(e.special_tot||0),0).toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right font-bold">${emps.reduce((s,e)=>s+(e.special_tot||0),0).toFixed(2)}</td>
                   <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+(e.total_hours||0),0).toFixed(1)}</td>
-                  <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+(e.benefit_co||0),0).toFixed(2)}</td>
-                  <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+(e.fund_co||0),0).toFixed(2)}</td>
-                  <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+(e.deduction||0),0).toFixed(2)}</td>
-                  <td className="font-mono text-xs text-right font-bold">{emps.reduce((s,e)=>s+(e.gross||0),0).toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right font-bold">${emps.reduce((s,e)=>s+(e.benefit_co||0),0).toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right font-bold">${emps.reduce((s,e)=>s+(e.fund_co||0),0).toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right font-bold">${emps.reduce((s,e)=>s+(e.deduction||0),0).toFixed(2)}</td>
+                  <td className="font-mono text-xs text-right font-bold">${emps.reduce((s,e)=>s+(e.gross||0),0).toFixed(2)}</td>
                 </tr>
               )}
             </tbody>
