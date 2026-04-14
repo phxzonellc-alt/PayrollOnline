@@ -526,26 +526,28 @@ async def export_daily_statement_pdf(event_id: str, day: int, request: Request):
 
 # ---- GRAND TOTAL BOX HELPER ----
 def _pdf_grand_total_box(pdf, pw, t_gross, t_benefit, t_fund, t_deduct):
-    pdf.ln(0.15)
-    bw = 3.0
-    bx = pw - bw
-    pdf.set_fill_color(240, 242, 248)
-    pdf.set_font('Helvetica', 'B', 9)
-    pdf.set_x(0.5 + bx)
-    pdf.cell(bw, 0.28, "GRAND TOTAL", border=1, fill=True, align='C')
-    pdf.ln()
-    pdf.set_font('Helvetica', '', 8)
-    for label, val in [("Gross Salary", t_gross), ("Benefits", t_benefit), ("Fund", t_fund), ("Deductions", t_deduct)]:
-        pdf.set_x(0.5 + bx)
-        pdf.cell(bw * 0.6, 0.22, f"  {label}", border='LB')
-        pdf.cell(bw * 0.4, 0.22, f"${val:,.2f}  ", border='RB', align='R')
-        pdf.ln()
-    pdf.set_font('Helvetica', 'B', 9)
-    pdf.set_fill_color(220, 225, 240)
     gt = t_gross + t_benefit + t_fund + t_deduct
-    pdf.set_x(0.5 + bx)
-    pdf.cell(bw * 0.6, 0.28, "  Grand Total", border=1, fill=True)
-    pdf.cell(bw * 0.4, 0.28, f"${gt:,.2f}  ", border=1, fill=True, align='R')
+    pdf.ln(0.2)
+    pdf.set_draw_color(180, 180, 180)
+
+    # Header
+    pdf.set_fill_color(230, 235, 245)
+    pdf.set_font('Helvetica', 'B', 10)
+    pdf.cell(pw, 0.3, "  GRAND TOTAL", border=1, fill=True)
+    pdf.ln()
+
+    # Line items - full width, label left / value right
+    pdf.set_font('Helvetica', '', 9)
+    for label, val in [("Gross Salary", t_gross), ("Benefits", t_benefit), ("Fund", t_fund), ("Deductions", t_deduct)]:
+        pdf.cell(pw * 0.8, 0.25, f"    {label}", border='LB')
+        pdf.cell(pw * 0.2, 0.25, f"${val:,.2f}", border='RB', align='R')
+        pdf.ln()
+
+    # Grand Total row
+    pdf.set_font('Helvetica', 'B', 11)
+    pdf.set_fill_color(220, 225, 240)
+    pdf.cell(pw * 0.8, 0.32, "    Grand Total", border=1, fill=True)
+    pdf.cell(pw * 0.2, 0.32, f"${gt:,.2f}", border=1, fill=True, align='R')
     pdf.ln()
 
 # ---- COMBINED FULL REPORT PDF ----
