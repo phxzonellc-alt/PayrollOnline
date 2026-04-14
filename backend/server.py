@@ -474,15 +474,15 @@ async def export_daily_statement_pdf(event_id: str, day: int, request: Request):
             pdf.set_font('Helvetica', '', 7.5)
         used_r2 = emp.get("used_r2", False)
         vals = [str(idx+1), emp["name"][:22], emp["dept_emp_num"][:12],
-                f"{emp['hrly_rate']:.2f}",
+                f"${emp['hrly_rate']:.2f}",
                 f"{emp['st_hrs']:.1f}" if emp['st_hrs'] else "-",
                 f"{emp['ot_hrs']:.1f}" if emp['ot_hrs'] else "-",
                 f"{emp['dt_hrs']:.1f}" if emp['dt_hrs'] else "-",
-                f"{emp['special_rate']:.2f}" if emp['special_rate'] else "-",
+                f"${emp['special_rate']:.2f}" if emp['special_rate'] else "-",
                 f"{emp['sr_hours']:.1f}" if emp['sr_hours'] else "-",
-                f"{emp['special_tot']:.2f}" if emp['special_tot'] else "-",
-                f"{emp['total_hours']:.1f}", f"{emp['benefit_co']:.2f}",
-                f"{emp['fund_co']:.2f}", f"{emp['deduction']:.2f}", f"{emp['gross']:.2f}"]
+                f"${emp['special_tot']:.2f}" if emp['special_tot'] else "-",
+                f"{emp['total_hours']:.1f}", f"${emp['benefit_co']:.2f}",
+                f"${emp['fund_co']:.2f}", f"${emp['deduction']:.2f}", f"${emp['gross']:.2f}"]
         for i, v in enumerate(vals):
             align = 'L' if i <= 2 else 'R'
             if used_r2 and i in r2_stmt_cols:
@@ -496,19 +496,25 @@ async def export_daily_statement_pdf(event_id: str, day: int, request: Request):
         pdf.ln()
 
     # Totals
+    t_gross = sum(e['gross'] for e in emps)
+    t_benefit = sum(e['benefit_co'] for e in emps)
+    t_fund = sum(e['fund_co'] for e in emps)
+    t_deduct = sum(e['deduction'] for e in emps)
     pdf.set_font('Helvetica', 'B', 7.5)
     pdf.set_fill_color(220, 225, 240)
     tots = ["", "TOTALS", "", "",
             f"{sum(e['st_hrs'] for e in emps):.1f}", f"{sum(e['ot_hrs'] for e in emps):.1f}",
             f"{sum(e['dt_hrs'] for e in emps):.1f}", "",
-            f"{sum(e['sr_hours'] for e in emps):.1f}", f"{sum(e['special_tot'] for e in emps):.2f}",
-            f"{sum(e['total_hours'] for e in emps):.1f}", f"{sum(e['benefit_co'] for e in emps):.2f}",
-            f"{sum(e['fund_co'] for e in emps):.2f}", f"{sum(e['deduction'] for e in emps):.2f}",
-            f"{sum(e['gross'] for e in emps):.2f}"]
+            f"{sum(e['sr_hours'] for e in emps):.1f}", f"${sum(e['special_tot'] for e in emps):.2f}",
+            f"{sum(e['total_hours'] for e in emps):.1f}", f"${t_benefit:.2f}",
+            f"${t_fund:.2f}", f"${t_deduct:.2f}", f"${t_gross:.2f}"]
     for i, v in enumerate(tots):
         align = 'L' if i <= 2 else 'R'
         pdf.cell(widths[i], rh + 0.03, v, border=1, align=align, fill=True)
-    pdf.ln(0.3)
+    pdf.ln()
+    # Grand Total box
+    _pdf_grand_total_box(pdf, pw, t_gross, t_benefit, t_fund, t_deduct)
+    pdf.ln(0.15)
     pdf.set_font('Helvetica', 'I', 7)
     pdf.cell(pw, 0.18, f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
 
@@ -517,6 +523,30 @@ async def export_daily_statement_pdf(event_id: str, day: int, request: Request):
     name = stmt.get("event_name", "") or "payroll"
     return StreamingResponse(output, media_type="application/pdf",
                              headers={"Content-Disposition": f'attachment; filename="{name}_day{day}_statement.pdf"'})
+
+# ---- GRAND TOTAL BOX HELPER ----
+def _pdf_grand_total_box(pdf, pw, t_gross, t_benefit, t_fund, t_deduct):
+    pdf.ln(0.15)
+    bw = 3.0
+    bx = pw - bw
+    pdf.set_fill_color(240, 242, 248)
+    pdf.set_font('Helvetica', 'B', 9)
+    pdf.set_x(0.5 + bx)
+    pdf.cell(bw, 0.28, "GRAND TOTAL", border=1, fill=True, align='C')
+    pdf.ln()
+    pdf.set_font('Helvetica', '', 8)
+    for label, val in [("Gross Salary", t_gross), ("Benefits", t_benefit), ("Fund", t_fund), ("Deductions", t_deduct)]:
+        pdf.set_x(0.5 + bx)
+        pdf.cell(bw * 0.6, 0.22, f"  {label}", border='LB')
+        pdf.cell(bw * 0.4, 0.22, f"${val:,.2f}  ", border='RB', align='R')
+        pdf.ln()
+    pdf.set_font('Helvetica', 'B', 9)
+    pdf.set_fill_color(220, 225, 240)
+    gt = t_gross + t_benefit + t_fund + t_deduct
+    pdf.set_x(0.5 + bx)
+    pdf.cell(bw * 0.6, 0.28, "  Grand Total", border=1, fill=True)
+    pdf.cell(bw * 0.4, 0.28, f"${gt:,.2f}  ", border=1, fill=True, align='R')
+    pdf.ln()
 
 # ---- COMBINED FULL REPORT PDF ----
 def _pdf_company_branding(pdf, pw, co):
@@ -576,15 +606,15 @@ def _pdf_daily_stmt_page(pdf, pw, stmt, day):
             pdf.set_font('Helvetica', '', 7)
         used_r2 = emp.get("used_r2", False)
         vals = [str(idx+1), emp["name"][:22], emp["dept_emp_num"][:12],
-                f"{emp['hrly_rate']:.2f}",
+                f"${emp['hrly_rate']:.2f}",
                 f"{emp['st_hrs']:.1f}" if emp['st_hrs'] else "-",
                 f"{emp['ot_hrs']:.1f}" if emp['ot_hrs'] else "-",
                 f"{emp['dt_hrs']:.1f}" if emp['dt_hrs'] else "-",
-                f"{emp['special_rate']:.2f}" if emp['special_rate'] else "-",
+                f"${emp['special_rate']:.2f}" if emp['special_rate'] else "-",
                 f"{emp['sr_hours']:.1f}" if emp['sr_hours'] else "-",
-                f"{emp['special_tot']:.2f}" if emp['special_tot'] else "-",
-                f"{emp['total_hours']:.1f}", f"{emp['benefit_co']:.2f}",
-                f"{emp['fund_co']:.2f}", f"{emp['deduction']:.2f}", f"{emp['gross']:.2f}"]
+                f"${emp['special_tot']:.2f}" if emp['special_tot'] else "-",
+                f"{emp['total_hours']:.1f}", f"${emp['benefit_co']:.2f}",
+                f"${emp['fund_co']:.2f}", f"${emp['deduction']:.2f}", f"${emp['gross']:.2f}"]
         for i, v in enumerate(vals):
             align = 'L' if i <= 2 else 'R'
             if used_r2 and i in r2_cols:
@@ -598,18 +628,22 @@ def _pdf_daily_stmt_page(pdf, pw, stmt, day):
         pdf.ln()
     # Totals
     if emps:
+        t_gross = sum(e['gross'] for e in emps)
+        t_benefit = sum(e['benefit_co'] for e in emps)
+        t_fund = sum(e['fund_co'] for e in emps)
+        t_deduct = sum(e['deduction'] for e in emps)
         pdf.set_font('Helvetica', 'B', 7)
         pdf.set_fill_color(220, 225, 240)
         tots = ["", "TOTALS", "", "",
                 f"{sum(e['st_hrs'] for e in emps):.1f}", f"{sum(e['ot_hrs'] for e in emps):.1f}",
                 f"{sum(e['dt_hrs'] for e in emps):.1f}", "",
-                f"{sum(e['sr_hours'] for e in emps):.1f}", f"{sum(e['special_tot'] for e in emps):.2f}",
-                f"{sum(e['total_hours'] for e in emps):.1f}", f"{sum(e['benefit_co'] for e in emps):.2f}",
-                f"{sum(e['fund_co'] for e in emps):.2f}", f"{sum(e['deduction'] for e in emps):.2f}",
-                f"{sum(e['gross'] for e in emps):.2f}"]
+                f"{sum(e['sr_hours'] for e in emps):.1f}", f"${sum(e['special_tot'] for e in emps):.2f}",
+                f"{sum(e['total_hours'] for e in emps):.1f}", f"${t_benefit:.2f}",
+                f"${t_fund:.2f}", f"${t_deduct:.2f}", f"${t_gross:.2f}"]
         for i, v in enumerate(tots):
             pdf.cell(widths[i], rh + 0.03, v, border=1, align='L' if i <= 2 else 'R', fill=True)
         pdf.ln()
+        _pdf_grand_total_box(pdf, pw, t_gross, t_benefit, t_fund, t_deduct)
 
 def _pdf_summary_page(pdf, pw, data):
     rh = 0.22
@@ -653,11 +687,11 @@ def _pdf_summary_page(pdf, pw, data):
             _draw_sum_headers()
             pdf.set_font('Helvetica', '', 7)
         vals = [str(idx+1), emp["name"][:18], emp["dept_emp_num"][:10],
-                f"{emp['rate1']:.2f}", f"{emp['r1_st']:.1f}", f"{emp['r1_ot']:.1f}", f"{emp['r1_dt']:.1f}",
-                f"{emp['rate2']:.2f}", f"{emp['r2_st']:.1f}", f"{emp['r2_ot']:.1f}", f"{emp['r2_dt']:.1f}",
-                f"{emp['special_rate']:.2f}", f"{emp['sr_hours']:.1f}", f"{emp['special_tot']:.2f}",
-                f"{emp['total_hours']:.1f}", f"{emp['benefit_co']:.2f}", f"{emp['fund_co']:.2f}",
-                f"{emp['deduction']:.2f}", f"{emp['gross']:.2f}"]
+                f"${emp['rate1']:.2f}", f"{emp['r1_st']:.1f}", f"{emp['r1_ot']:.1f}", f"{emp['r1_dt']:.1f}",
+                f"${emp['rate2']:.2f}", f"{emp['r2_st']:.1f}", f"{emp['r2_ot']:.1f}", f"{emp['r2_dt']:.1f}",
+                f"${emp['special_rate']:.2f}", f"{emp['sr_hours']:.1f}", f"${emp['special_tot']:.2f}",
+                f"{emp['total_hours']:.1f}", f"${emp['benefit_co']:.2f}", f"${emp['fund_co']:.2f}",
+                f"${emp['deduction']:.2f}", f"${emp['gross']:.2f}"]
         for i, v in enumerate(vals):
             align = 'L' if i <= 2 else 'R'
             if i in r2_cols:
@@ -671,16 +705,19 @@ def _pdf_summary_page(pdf, pw, data):
         pdf.ln()
     # Summary totals
     if emps:
+        t_gross = sum(e['gross'] for e in emps)
+        t_benefit = sum(e['benefit_co'] for e in emps)
+        t_fund = sum(e['fund_co'] for e in emps)
+        t_deduct = sum(e['deduction'] for e in emps)
         pdf.set_font('Helvetica', 'B', 7)
         tot = ["", "TOTALS", "",
                "", f"{sum(e['r1_st'] for e in emps):.1f}", f"{sum(e['r1_ot'] for e in emps):.1f}",
                f"{sum(e['r1_dt'] for e in emps):.1f}", "",
                f"{sum(e['r2_st'] for e in emps):.1f}", f"{sum(e['r2_ot'] for e in emps):.1f}",
                f"{sum(e['r2_dt'] for e in emps):.1f}", "",
-               f"{sum(e['sr_hours'] for e in emps):.1f}", f"{sum(e['special_tot'] for e in emps):.2f}",
-               f"{sum(e['total_hours'] for e in emps):.1f}", f"{sum(e['benefit_co'] for e in emps):.2f}",
-               f"{sum(e['fund_co'] for e in emps):.2f}", f"{sum(e['deduction'] for e in emps):.2f}",
-               f"{sum(e['gross'] for e in emps):.2f}"]
+               f"{sum(e['sr_hours'] for e in emps):.1f}", f"${sum(e['special_tot'] for e in emps):.2f}",
+               f"{sum(e['total_hours'] for e in emps):.1f}", f"${t_benefit:.2f}",
+               f"${t_fund:.2f}", f"${t_deduct:.2f}", f"${t_gross:.2f}"]
         for i, v in enumerate(tot):
             if i in r2_cols:
                 pdf.set_fill_color(255, 236, 200)
@@ -688,6 +725,7 @@ def _pdf_summary_page(pdf, pw, data):
                 pdf.set_fill_color(220, 225, 240)
             pdf.cell(widths[i], rh + 0.03, v, border=1, align='L' if i <= 2 else 'R', fill=True)
         pdf.ln()
+        _pdf_grand_total_box(pdf, pw, t_gross, t_benefit, t_fund, t_deduct)
 
 @api_router.get("/events/{event_id}/export/full-pdf")
 async def export_full_pdf(event_id: str, request: Request):
@@ -973,11 +1011,11 @@ async def export_pdf(event_id: str, request: Request):
             pdf.set_font('Helvetica', '', 7)
 
         vals = [str(idx+1), emp["name"][:18], emp["dept_emp_num"][:10],
-                f"{emp['rate1']:.2f}", f"{emp['r1_st']:.1f}", f"{emp['r1_ot']:.1f}", f"{emp['r1_dt']:.1f}",
-                f"{emp['rate2']:.2f}", f"{emp['r2_st']:.1f}", f"{emp['r2_ot']:.1f}", f"{emp['r2_dt']:.1f}",
-                f"{emp['special_rate']:.2f}", f"{emp['sr_hours']:.1f}", f"{emp['special_tot']:.2f}",
-                f"{emp['total_hours']:.1f}", f"{emp['benefit_co']:.2f}", f"{emp['fund_co']:.2f}",
-                f"{emp['deduction']:.2f}", f"{emp['gross']:.2f}"]
+                f"${emp['rate1']:.2f}", f"{emp['r1_st']:.1f}", f"{emp['r1_ot']:.1f}", f"{emp['r1_dt']:.1f}",
+                f"${emp['rate2']:.2f}", f"{emp['r2_st']:.1f}", f"{emp['r2_ot']:.1f}", f"{emp['r2_dt']:.1f}",
+                f"${emp['special_rate']:.2f}", f"{emp['sr_hours']:.1f}", f"${emp['special_tot']:.2f}",
+                f"{emp['total_hours']:.1f}", f"${emp['benefit_co']:.2f}", f"${emp['fund_co']:.2f}",
+                f"${emp['deduction']:.2f}", f"${emp['gross']:.2f}"]
         for i, v in enumerate(vals):
             align = 'L' if i <= 2 else 'R'
             if i in r2_pdf_cols:
@@ -994,15 +1032,18 @@ async def export_pdf(event_id: str, request: Request):
     pdf.set_font('Helvetica', 'B', 7)
     pdf.set_fill_color(220, 225, 240)
     emps = data["employees"]
+    t_gross = sum(e['gross'] for e in emps)
+    t_benefit = sum(e['benefit_co'] for e in emps)
+    t_fund = sum(e['fund_co'] for e in emps)
+    t_deduct = sum(e['deduction'] for e in emps)
     tot_vals = ["", "TOTALS", "",
                 "", f"{sum(e['r1_st'] for e in emps):.1f}", f"{sum(e['r1_ot'] for e in emps):.1f}",
                 f"{sum(e['r1_dt'] for e in emps):.1f}", "",
                 f"{sum(e['r2_st'] for e in emps):.1f}", f"{sum(e['r2_ot'] for e in emps):.1f}",
                 f"{sum(e['r2_dt'] for e in emps):.1f}", "",
-                f"{sum(e['sr_hours'] for e in emps):.1f}", f"{sum(e['special_tot'] for e in emps):.2f}",
-                f"{sum(e['total_hours'] for e in emps):.1f}", f"{sum(e['benefit_co'] for e in emps):.2f}",
-                f"{sum(e['fund_co'] for e in emps):.2f}", f"{sum(e['deduction'] for e in emps):.2f}",
-                f"{sum(e['gross'] for e in emps):.2f}"]
+                f"{sum(e['sr_hours'] for e in emps):.1f}", f"${sum(e['special_tot'] for e in emps):.2f}",
+                f"{sum(e['total_hours'] for e in emps):.1f}", f"${t_benefit:.2f}",
+                f"${t_fund:.2f}", f"${t_deduct:.2f}", f"${t_gross:.2f}"]
     for i, v in enumerate(tot_vals):
         align = 'L' if i <= 2 else 'R'
         if i in r2_pdf_cols:
@@ -1011,6 +1052,9 @@ async def export_pdf(event_id: str, request: Request):
             pdf.set_fill_color(220, 225, 240)
         pdf.cell(widths[i], rh + 0.03, v, border=1, align=align, fill=True)
     pdf.ln()
+
+    # Grand Total box
+    _pdf_grand_total_box(pdf, pw, t_gross, t_benefit, t_fund, t_deduct)
 
     # Footer
     pdf.ln(0.15)
