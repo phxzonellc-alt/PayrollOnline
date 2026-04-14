@@ -343,6 +343,36 @@ async def reorder_employees(event_id: str, request: Request):
         e["id"] = str(e.pop("_id"))
     return employees
 
+# ---- IMPORT HELPERS ----
+def _detect_columns(header):
+    return {
+        "name": next((i for i, h in enumerate(header) if 'name' in h), 0),
+        "dept": next((i for i, h in enumerate(header) if 'dept' in h or 'emp' in h or 'number' in h), 1),
+        "r1": next((i for i, h in enumerate(header) if 'rate' in h and '1' in h), 2),
+        "r2": next((i for i, h in enumerate(header) if 'rate' in h and '2' in h), 3),
+        "sr": next((i for i, h in enumerate(header) if 'special' in h or 'sr' in h), 4),
+    }
+
+def _safe_float(val):
+    try:
+        return float(val) if val else 0
+    except (ValueError, TypeError):
+        return 0
+
+def _parse_emp_row(row, cols, event_id, sort_order):
+    name_val = row[cols["name"]] if len(row) > cols["name"] else None
+    if not name_val or not str(name_val).strip():
+        return None
+    return {
+        "event_id": event_id,
+        "name": str(name_val).strip(),
+        "dept_emp_num": str(row[cols["dept"]]).strip() if len(row) > cols["dept"] and row[cols["dept"]] else "",
+        "rate1": _safe_float(row[cols["r1"]] if len(row) > cols["r1"] else 0),
+        "rate2": _safe_float(row[cols["r2"]] if len(row) > cols["r2"] else 0),
+        "special_rate": _safe_float(row[cols["sr"]] if len(row) > cols["sr"] else 0),
+        "sort_order": sort_order,
+    }
+
 # ---- BULK EMPLOYEE IMPORT ----
 @api_router.post("/events/{event_id}/employees/import")
 async def import_employees(event_id: str, request: Request, file: UploadFile = File(...)):
@@ -357,24 +387,12 @@ async def import_employees(event_id: str, request: Request, file: UploadFile = F
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
         header = [str(c).strip().lower() if c else "" for c in rows[0]] if rows else []
-        name_col = next((i for i, h in enumerate(header) if 'name' in h), 0)
-        dept_col = next((i for i, h in enumerate(header) if 'dept' in h or 'emp' in h or 'number' in h), 1)
-        r1_col = next((i for i, h in enumerate(header) if 'rate' in h and '1' in h), 2)
-        r2_col = next((i for i, h in enumerate(header) if 'rate' in h and '2' in h), 3)
-        sr_col = next((i for i, h in enumerate(header) if 'special' in h or 'sr' in h), 4)
+        cols = _detect_columns(header)
         for row in rows[1:]:
-            if not row or not row[name_col]:
-                continue
             count += 1
-            emp = {
-                "event_id": event_id,
-                "name": str(row[name_col]).strip(),
-                "dept_emp_num": str(row[dept_col]).strip() if len(row) > dept_col and row[dept_col] else "",
-                "rate1": float(row[r1_col] or 0) if len(row) > r1_col and row[r1_col] else 0,
-                "rate2": float(row[r2_col] or 0) if len(row) > r2_col and row[r2_col] else 0,
-                "special_rate": float(row[sr_col] or 0) if len(row) > sr_col and row[sr_col] else 0,
-                "sort_order": count,
-            }
+            emp = _parse_emp_row(list(row), cols, event_id, count)
+            if not emp:
+                continue
             result = await db.employees.insert_one(emp)
             emp["id"] = str(result.inserted_id)
             emp.pop("_id", None)
@@ -383,24 +401,12 @@ async def import_employees(event_id: str, request: Request, file: UploadFile = F
         text = content.decode('utf-8-sig')
         reader = csv.reader(StringIO(text))
         header = [c.strip().lower() for c in next(reader, [])]
-        name_col = next((i for i, h in enumerate(header) if 'name' in h), 0)
-        dept_col = next((i for i, h in enumerate(header) if 'dept' in h or 'emp' in h or 'number' in h), 1)
-        r1_col = next((i for i, h in enumerate(header) if 'rate' in h and '1' in h), 2)
-        r2_col = next((i for i, h in enumerate(header) if 'rate' in h and '2' in h), 3)
-        sr_col = next((i for i, h in enumerate(header) if 'special' in h or 'sr' in h), 4)
+        cols = _detect_columns(header)
         for row in reader:
-            if not row or not row[name_col].strip():
-                continue
             count += 1
-            emp = {
-                "event_id": event_id,
-                "name": row[name_col].strip(),
-                "dept_emp_num": row[dept_col].strip() if len(row) > dept_col else "",
-                "rate1": float(row[r1_col]) if len(row) > r1_col and row[r1_col].strip() else 0,
-                "rate2": float(row[r2_col]) if len(row) > r2_col and row[r2_col].strip() else 0,
-                "special_rate": float(row[sr_col]) if len(row) > sr_col and row[sr_col].strip() else 0,
-                "sort_order": count,
-            }
+            emp = _parse_emp_row(row, cols, event_id, count)
+            if not emp:
+                continue
             result = await db.employees.insert_one(emp)
             emp["id"] = str(result.inserted_id)
             emp.pop("_id", None)
@@ -445,10 +451,17 @@ async def batch_update_time_entries(event_id: str, request: Request):
     return {"message": f"Updated {len(entries)} entries"}
 
 # ---- CALCULATIONS ----
-def calc_gross(rate1, rate2, special_rate, st_r1, ot_r1, dt_r1, st_r2, ot_r2, dt_r2, sr_hours):
+def calc_gross(rate1, rate2, special_rate, st_r1=0, ot_r1=0, dt_r1=0, st_r2=0, ot_r2=0, dt_r2=0, sr_hours=0):
     if (st_r1 + ot_r1 + dt_r1) == 0:
         return (rate2 * st_r2) + (rate2 * 1.5 * ot_r2) + (rate2 * 2 * dt_r2) + (special_rate * sr_hours)
     return (rate1 * st_r1) + (rate1 * 1.5 * ot_r1) + (rate1 * 2 * dt_r1) + (special_rate * sr_hours)
+
+def calc_gross_from_entry(rate1, rate2, special_rate, entry):
+    """Convenience wrapper that extracts hours from a time entry dict."""
+    return calc_gross(rate1, rate2, special_rate,
+                      entry.get("st_r1", 0), entry.get("ot_r1", 0), entry.get("dt_r1", 0),
+                      entry.get("st_r2", 0), entry.get("ot_r2", 0), entry.get("dt_r2", 0),
+                      entry.get("sr_hours", 0))
 
 # ---- DAILY STATEMENT ----
 @api_router.get("/events/{event_id}/daily-statement/{day}")
@@ -929,7 +942,7 @@ async def _get_sum_totals_data(event_id: str):
         td2 = sum(e.get("dt_r2", 0) for e in ents)
         tsr = sum(e.get("sr_hours", 0) for e in ents)
         r1, r2, spr = emp.get("rate1", 0), emp.get("rate2", 0), emp.get("special_rate", 0)
-        tgross = sum(calc_gross(r1, r2, spr, e.get("st_r1",0), e.get("ot_r1",0), e.get("dt_r1",0), e.get("st_r2",0), e.get("ot_r2",0), e.get("dt_r2",0), e.get("sr_hours",0)) for e in ents)
+        tgross = sum(calc_gross_from_entry(r1, r2, spr, e) for e in ents)
         tgross = round(tgross, 2)
         result.append({
             "employee_id": eid, "name": emp.get("name",""), "dept_emp_num": emp.get("dept_emp_num",""),

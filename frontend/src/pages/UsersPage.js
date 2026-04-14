@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
@@ -20,15 +20,15 @@ export default function UsersPage() {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  useEffect(() => { loadUsers(); }, []);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       const res = await api.get('/users');
       setUsers(res.data);
     } catch { toast.error('Failed to load users'); }
     finally { setLoading(false); }
-  };
+  }, []);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -175,8 +175,14 @@ export default function UsersPage() {
               ) : (
                 <div key={u.id} className="flex items-center justify-between px-4 py-3" data-testid={`user-row-${u.id}`}>
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-sm flex items-center justify-center ${u.role === 'admin' ? 'bg-primary/10 text-primary' : u.role === 'user' ? 'bg-green-50 text-green-600' : 'bg-muted text-muted-foreground'}`}>
-                      {u.role === 'admin' ? <Shield className="h-4 w-4" /> : u.role === 'user' ? <UserCheck className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    <div className={`w-8 h-8 rounded-sm flex items-center justify-center ${
+                      u.role === 'admin' ? 'bg-primary/10 text-primary' :
+                      u.role === 'user' ? 'bg-green-50 text-green-600' :
+                      'bg-muted text-muted-foreground'
+                    }`}>
+                      {u.role === 'admin' && <Shield className="h-4 w-4" />}
+                      {u.role === 'user' && <UserCheck className="h-4 w-4" />}
+                      {u.role === 'viewer' && <Eye className="h-4 w-4" />}
                     </div>
                     <div>
                       <p className="text-sm font-semibold">{u.name || u.email}</p>

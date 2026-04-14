@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
@@ -20,15 +20,15 @@ export default function EventsPage() {
   const isAdmin = user?.role === 'admin';
   const isEditor = user?.role === 'admin' || user?.role === 'user';
 
-  useEffect(() => { loadEvents(); }, []);
-
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     try {
       const res = await api.get('/events');
       setEvents(res.data);
     } catch { toast.error('Failed to load events'); }
     finally { setLoading(false); }
-  };
+  }, []);
+
+  useEffect(() => { loadEvents(); }, [loadEvents]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
