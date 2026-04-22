@@ -1253,9 +1253,13 @@ async def seed_admin():
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
+    await db.users.create_index([("created_at", -1)])
+    await db.events.create_index([("created_at", -1)])
+    await db.events.create_index("job_number")
     await db.time_entries.create_index([("event_id", 1), ("employee_id", 1), ("day_number", 1)], unique=True)
+    await db.time_entries.create_index([("event_id", 1), ("day_number", 1)])
     await seed_admin()
-    logger.info("Server started, admin seeded")
+    logger.info("Server started, admin seeded, indexes ensured")
 
 @app.on_event("shutdown")
 async def shutdown():
