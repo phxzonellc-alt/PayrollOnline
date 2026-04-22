@@ -217,6 +217,8 @@ async def create_event(request: Request):
         "company_name": body.get("company_name", ""),
         "company_email": body.get("company_email", ""),
         "company_phone": body.get("company_phone", ""),
+        "pay_period_start": body.get("pay_period_start", ""),
+        "pay_period_end": body.get("pay_period_end", ""),
         "fund_pct": float(body.get("fund_pct", 0.02)),
         "benefit_pct": float(body.get("benefit_pct", 0.21)),
         "deduction_pct": float(body.get("deduction_pct", 0.05)),
@@ -501,7 +503,9 @@ async def get_daily_statement(event_id: str, day: int, request: Request):
             "day_note": (event.get("notes") or {}).get(str(day), ""),
             "company_name": event.get("company_name", ""),
             "company_email": event.get("company_email", ""),
-            "company_phone": event.get("company_phone", "")}
+            "company_phone": event.get("company_phone", ""),
+            "pay_period_start": event.get("pay_period_start", ""),
+            "pay_period_end": event.get("pay_period_end", "")}
 
 # ---- DAILY STATEMENT PDF ----
 @api_router.get("/events/{event_id}/daily-statement/{day}/pdf")
@@ -623,31 +627,29 @@ async def export_daily_statement_pdf(event_id: str, day: int, request: Request):
     return StreamingResponse(output, media_type="application/pdf",
                              headers={"Content-Disposition": f'attachment; filename="{name}_day{day}_statement.pdf"'})
 
-# ---- GRAND TOTAL BOX HELPER ----
+# ---- GRAND TOTAL BOX HELPER (5 horizontal columns) ----
 def _pdf_grand_total_box(pdf, pw, t_gross, t_benefit, t_fund, t_deduct):
     gt = t_gross + t_benefit + t_fund + t_deduct
-    pdf.ln(0.15)
-    bw = 3.0
+    pdf.ln(0.2)
     pdf.set_draw_color(180, 180, 180)
+    cw = pw / 5  # 5 equal columns
 
-    # Header
+    # Labels row
     pdf.set_fill_color(240, 242, 248)
-    pdf.set_font('Helvetica', 'B', 9)
-    pdf.cell(bw, 0.28, "GRAND TOTAL", border=1, fill=True, align='C')
+    pdf.set_font('Helvetica', 'B', 7.5)
+    for label in ["Gross Salary", "Benefits", "Fund", "Deductions", "Grand Total"]:
+        pdf.cell(cw, 0.22, label, border=1, fill=True, align='C')
     pdf.ln()
 
-    # Line items
-    pdf.set_font('Helvetica', '', 8)
-    for label, val in [("Gross Salary", t_gross), ("Benefits", t_benefit), ("Fund", t_fund), ("Deductions", t_deduct)]:
-        pdf.cell(bw * 0.6, 0.22, f"  {label}", border='LB')
-        pdf.cell(bw * 0.4, 0.22, f"${val:,.2f}  ", border='RB', align='R')
-        pdf.ln()
-
-    # Grand Total row
-    pdf.set_font('Helvetica', 'B', 9)
-    pdf.set_fill_color(220, 225, 240)
-    pdf.cell(bw * 0.6, 0.28, "  Grand Total", border=1, fill=True)
-    pdf.cell(bw * 0.4, 0.28, f"${gt:,.2f}  ", border=1, fill=True, align='R')
+    # Values row
+    pdf.set_font('Helvetica', '', 9)
+    for i, val in enumerate([t_gross, t_benefit, t_fund, t_deduct, gt]):
+        if i == 4:
+            pdf.set_font('Helvetica', 'B', 10)
+            pdf.set_fill_color(220, 225, 240)
+            pdf.cell(cw, 0.3, f"${val:,.2f}", border=1, fill=True, align='C')
+        else:
+            pdf.cell(cw, 0.3, f"${val:,.2f}", border=1, align='C')
     pdf.ln()
 
 # ---- COMBINED FULL REPORT PDF ----
@@ -664,6 +666,19 @@ def _pdf_company_branding(pdf, pw, co):
             pdf.set_font('Helvetica', '', 8)
             pdf.cell(pw, 0.2, "  |  ".join(parts), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(0.1)
+    pp_start = co.get('pay_period_start', '')
+    pp_end = co.get('pay_period_end', '')
+    if pp_start or pp_end:
+        pdf.set_font('Helvetica', '', 8)
+        pp_label = "Pay Period: "
+        if pp_start and pp_end:
+            pp_label += f"{pp_start} to {pp_end}"
+        elif pp_start:
+            pp_label += f"Starting {pp_start}"
+        else:
+            pp_label += f"Ending {pp_end}"
+        pdf.cell(pw, 0.2, pp_label, new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(0.05)
 
 def _pdf_daily_stmt_page(pdf, pw, stmt, day):
     rh = 0.22
@@ -958,7 +973,8 @@ async def _get_sum_totals_data(event_id: str):
                   "venue": event.get("venue",""), "job_number": event.get("job_number",""),
                   "payroll_name": event.get("payroll_name",""), "days": event.get("days", {}),
                   "company_name": event.get("company_name",""), "company_email": event.get("company_email",""),
-                  "company_phone": event.get("company_phone","")},
+                  "company_phone": event.get("company_phone",""),
+                  "pay_period_start": event.get("pay_period_start",""), "pay_period_end": event.get("pay_period_end","")},
         "fund_pct": fp, "benefit_pct": bp, "deduction_pct": dp, "employees": result,
     }
 
