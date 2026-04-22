@@ -68,6 +68,35 @@ export default function InfoTab({ event, updateEventField, saveEvent, saving, is
     return diff > 0 ? diff : null;
   }, [event.pay_period_start, event.pay_period_end]);
 
+  const fillDayDates = (start, end) => {
+    if (!start) return event.days || {};
+    const s = new Date(start + 'T00:00:00');
+    const e = end ? new Date(end + 'T00:00:00') : null;
+    const newDays = {};
+    for (let d = 1; d <= 10; d++) {
+      const date = new Date(s);
+      date.setDate(s.getDate() + d - 1);
+      if (e && date > e) break;
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const dy = String(date.getDate()).padStart(2, '0');
+      newDays[d] = { ...(event.days?.[d] || {}), date: `${y}-${m}-${dy}` };
+    }
+    return newDays;
+  };
+
+  const handlePayPeriodChange = (field, value) => {
+    const newStart = field === 'pay_period_start' ? value : (event.pay_period_start || '');
+    const newEnd = field === 'pay_period_end' ? value : (event.pay_period_end || '');
+    updateEventField(p => {
+      const updated = { ...p, [field]: value };
+      if (newStart) {
+        updated.days = fillDayDates(newStart, newEnd);
+      }
+      return updated;
+    });
+  };
+
   return (
     <div className="max-w-3xl space-y-4 p-4">
       <div className="grid grid-cols-2 gap-4">
@@ -87,7 +116,7 @@ export default function InfoTab({ event, updateEventField, saveEvent, saving, is
             <Label className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">Start Date</Label>
             <DatePicker
               value={event.pay_period_start || ''}
-              onChange={v => updateEventField(p => ({ ...p, pay_period_start: v }))}
+              onChange={v => handlePayPeriodChange('pay_period_start', v)}
               testId="info-pay_period_start"
               placeholder="Select start date"
             />
@@ -96,7 +125,7 @@ export default function InfoTab({ event, updateEventField, saveEvent, saving, is
             <Label className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">End Date</Label>
             <DatePicker
               value={event.pay_period_end || ''}
-              onChange={v => updateEventField(p => ({ ...p, pay_period_end: v }))}
+              onChange={v => handlePayPeriodChange('pay_period_end', v)}
               testId="info-pay_period_end"
               placeholder="Select end date"
             />
