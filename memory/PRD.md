@@ -54,12 +54,24 @@ Deduction = Deduction% * Gross (default 5%)
 - [x] Read-only daily statements (Input/Statement toggle on each Day tab)
 - [x] Daily statement PDF print (per-day 8.5x11 Letter PDF)
 - [x] CSV template download for employee import
+- [x] Multi-user support with role-based access (admin/user/viewer) - 2026-02
+- [x] Drag-and-drop employee reordering - 2026-02
+- [x] Keyboard nav (Tab/Enter) for spreadsheet-style entry - 2026-02
+- [x] Multi-tab auto-save - 2026-02
+- [x] Pay period calendar with auto-fill Day 1-10 dates - 2026-02
+- [x] EventDetailPage refactored into modular sub-components - 2026-02
+- [x] 5-column vertical Grand Total block on PDF output - 2026-02
+- [x] Deployment readiness: MongoDB indexes added (users.email, users.created_at, events.created_at, events.job_number, time_entries compound) - 2026-02
+- [x] Deployment agent PASS status confirmed - 2026-02
 
 ### P1 - Next
-- [ ] Employee sorting/reordering via drag-and-drop
+- [ ] Clone/duplicate past event (copy employees + rates, blank hours)
+- [ ] Rate-limit /api/auth/login (brute force protection)
+- [ ] Health endpoint /api/health for uptime monitors
 
 ### P2 - Future
-- [ ] Multi-user support with role-based access
-- [ ] Email payslips to employees
+- [ ] Email payslips/exports to employees or employer
 - [ ] Payroll history and audit trail
 - [ ] Dashboard with charts (total spend, hours breakdown)
+- [ ] Archive past events to keep main list clean
+- [ ] Admin-only full data backup as JSON
