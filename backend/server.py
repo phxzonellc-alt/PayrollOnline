@@ -1252,14 +1252,23 @@ async def seed_admin():
 
 @app.on_event("startup")
 async def startup():
-    await db.users.create_index("email", unique=True)
-    await db.users.create_index([("created_at", -1)])
-    await db.events.create_index([("created_at", -1)])
-    await db.events.create_index("job_number")
-    await db.time_entries.create_index([("event_id", 1), ("employee_id", 1), ("day_number", 1)], unique=True)
-    await db.time_entries.create_index([("event_id", 1), ("day_number", 1)])
-    await seed_admin()
-    logger.info("Server started, admin seeded, indexes ensured")
+    # Index creation is best-effort: some managed Mongo providers restrict
+    # createIndexes permissions for app users. Don't let that crash boot.
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.users.create_index([("created_at", -1)])
+        await db.events.create_index([("created_at", -1)])
+        await db.events.create_index("job_number")
+        await db.time_entries.create_index([("event_id", 1), ("employee_id", 1), ("day_number", 1)], unique=True)
+        await db.time_entries.create_index([("event_id", 1), ("day_number", 1)])
+        logger.info("Indexes ensured")
+    except Exception as e:
+        logger.warning(f"Index creation skipped ({type(e).__name__}): {e}")
+    try:
+        await seed_admin()
+    except Exception as e:
+        logger.error(f"seed_admin failed ({type(e).__name__}): {e}")
+    logger.info("Server started")
 
 @app.on_event("shutdown")
 async def shutdown():
