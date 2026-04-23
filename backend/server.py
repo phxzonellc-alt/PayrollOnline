@@ -1266,9 +1266,12 @@ async def shutdown():
     client.close()
 
 app.include_router(api_router)
+
+_allowed_origins_raw = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+_allowed_origins = [o.strip() for o in _allowed_origins_raw.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.environ.get("FRONTEND_URL", "http://localhost:3000")],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
