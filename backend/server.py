@@ -872,6 +872,8 @@ def _pdf_summary_page(pdf, pw, data):
 async def export_full_pdf(event_id: str, request: Request):
     await get_current_user(request)
     sum_data = await _get_sum_totals_data(event_id)
+    # Hide employees with no hours entered yet from the full report
+    sum_data = {**sum_data, "employees": [e for e in sum_data["employees"] if (e.get("total_hours") or 0) > 0]}
     co = sum_data['event']
     pw = 11 - 1.0
 
@@ -925,6 +927,8 @@ async def export_full_pdf(event_id: str, request: Request):
         pdf.set_right_margin(0.5)
         _pdf_company_branding(pdf, pw, co)
         stmt = await get_daily_statement(event_id, day_num, request)
+        # Hide employees with zero hours on this particular day
+        stmt = {**stmt, "employees": [e for e in stmt["employees"] if (e.get("total_hours") or 0) > 0 or (e.get("sr_hours") or 0) > 0]}
         _pdf_daily_stmt_page(pdf, pw, stmt, day_num)
 
     # --- Summary page ---
@@ -1012,6 +1016,8 @@ async def get_sum_totals(event_id: str, request: Request):
 async def export_excel(event_id: str, request: Request):
     await get_current_user(request)
     data = await _get_sum_totals_data(event_id)
+    # Hide employees with no hours entered yet from the Excel export
+    data = {**data, "employees": [e for e in data["employees"] if (e.get("total_hours") or 0) > 0]}
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sum-Totals"
