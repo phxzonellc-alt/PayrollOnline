@@ -4,7 +4,10 @@ import { $f, sumField } from '../../lib/payroll';
 import { FileSpreadsheet, FileText } from 'lucide-react';
 
 export default function SummaryTab({ summaryData, handleExport, handleFullReportPdf }) {
-  const emps = useMemo(() => summaryData?.employees || [], [summaryData?.employees]);
+  const emps = useMemo(
+    () => (summaryData?.employees || []).filter(e => (e.total_hours || 0) > 0),
+    [summaryData?.employees],
+  );
 
   const totals = useMemo(() => ({
     r1_st: sumField(emps, 'r1_st'), r1_ot: sumField(emps, 'r1_ot'), r1_dt: sumField(emps, 'r1_dt'),

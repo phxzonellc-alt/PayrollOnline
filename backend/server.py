@@ -1126,6 +1126,8 @@ async def export_excel(event_id: str, request: Request):
 async def export_pdf(event_id: str, request: Request):
     await get_current_user(request)
     data = await _get_sum_totals_data(event_id)
+    # Hide employees with no hours entered yet from the summary PDF
+    data = {**data, "employees": [e for e in data["employees"] if (e.get("total_hours") or 0) > 0]}
     # 8.5 x 11 inch = Letter size, landscape for wide tables
     pdf = FPDF(orientation='L', unit='in', format='Letter')
     pdf.set_auto_page_break(auto=True, margin=0.5)
