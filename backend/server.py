@@ -21,7 +21,31 @@ from fastapi import UploadFile, File
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+
+
+def _resolve_db_name() -> str:
+    """
+    MongoDB database names cannot contain any of: / \\ . " $ * < > : | ?
+    We sanitize/validate so a mis-configured DB_NAME env var (e.g. accidentally
+    set to a full URL, domain, or password) does not crash backend startup.
+    Falls back to 'app_db' if the configured name is unusable.
+    """
+    raw = (os.environ.get('DB_NAME') or '').strip()
+    if not raw:
+        return 'app_db'
+    invalid_chars = set('/\\. "$*<>:|?')
+    sanitized = ''.join('_' if ch in invalid_chars else ch for ch in raw)
+    # After sanitizing, ensure non-empty and <=63 bytes per Mongo limit.
+    sanitized = sanitized[:63].strip('_') or 'app_db'
+    if sanitized != raw:
+        logging.getLogger(__name__).warning(
+            "DB_NAME '%s' contained invalid characters; using sanitized name '%s'",
+            raw, sanitized,
+        )
+    return sanitized
+
+
+db = client[_resolve_db_name()]
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
