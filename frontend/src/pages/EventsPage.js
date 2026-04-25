@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, FileSpreadsheet, LogOut, Trash2, Users } from 'lucide-react';
+import { Plus, FileSpreadsheet, LogOut, Trash2, Users, Copy } from 'lucide-react';
 
 export default function EventsPage() {
   const { user, logout } = useAuth();
@@ -50,6 +50,19 @@ export default function EventsPage() {
       setEvents(prev => prev.filter(ev => ev.id !== id));
       toast.success('Event deleted');
     } catch { toast.error('Failed to delete'); }
+  };
+
+  const handleClone = async (ev, e) => {
+    e.stopPropagation();
+    const defaultName = `${ev.event_name || 'Event'} (Copy)`;
+    const newName = window.prompt('Name for the new event:', defaultName);
+    if (newName === null) return;
+    try {
+      const res = await api.post(`/events/${ev.id}/clone`, { event_name: newName.trim() || defaultName });
+      setEvents(prev => [res.data, ...prev]);
+      toast.success('Event cloned');
+      navigate(`/events/${res.data.id}`);
+    } catch { toast.error('Failed to clone event'); }
   };
 
   return (
@@ -142,10 +155,16 @@ export default function EventsPage() {
                   </div>
                 </div>
                 {isEditor && (
-                <Button variant="ghost" size="icon" className="rounded-sm text-muted-foreground hover:text-destructive"
-                  onClick={(e) => handleDelete(ev.id, e)} data-testid={`delete-event-${ev.id}`}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="icon" className="rounded-sm text-muted-foreground hover:text-primary"
+                    onClick={(e) => handleClone(ev, e)} data-testid={`clone-event-${ev.id}`} title="Clone event">
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="rounded-sm text-muted-foreground hover:text-destructive"
+                    onClick={(e) => handleDelete(ev.id, e)} data-testid={`delete-event-${ev.id}`} title="Delete event">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
                 )}
               </div>
             ))}

@@ -299,6 +299,49 @@ async def delete_event(event_id: str, request: Request):
     await db.time_entries.delete_many({"event_id": event_id})
     return {"message": "Event deleted"}
 
+@api_router.post("/events/{event_id}/clone")
+async def clone_event(event_id: str, request: Request):
+    await require_editor(request)
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    src = await db.events.find_one({"_id": ObjectId(event_id)})
+    if not src:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # Build new event: copy metadata & rates, blank pay-period dates, day dates, notes.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    new_event = {k: v for k, v in src.items() if k not in ("_id", "created_at", "updated_at", "days", "notes", "pay_period_start", "pay_period_end")}
+    new_event["event_name"] = (body.get("event_name") or f"{src.get('event_name', '') or 'Event'} (Copy)").strip()
+    new_event["pay_period_start"] = ""
+    new_event["pay_period_end"] = ""
+    new_event["days"] = {}
+    new_event["notes"] = {}
+    new_event["created_at"] = now_iso
+    new_event["updated_at"] = now_iso
+    result = await db.events.insert_one(new_event)
+    new_id = str(result.inserted_id)
+
+    # Copy employees with rates & sort_order. No time entries are copied (hours blanked).
+    src_emps = await db.employees.find({"event_id": event_id}).sort("sort_order", 1).to_list(500)
+    if src_emps:
+        new_emps = [{
+            "event_id": new_id,
+            "name": e.get("name", ""),
+            "dept_emp_num": e.get("dept_emp_num", ""),
+            "rate1": float(e.get("rate1", 0) or 0),
+            "rate2": float(e.get("rate2", 0) or 0),
+            "special_rate": float(e.get("special_rate", 0) or 0),
+            "sort_order": int(e.get("sort_order", i + 1)),
+        } for i, e in enumerate(src_emps)]
+        await db.employees.insert_many(new_emps)
+
+    new_event["id"] = new_id
+    new_event.pop("_id", None)
+    return new_event
+
 # ---- EMPLOYEES CRUD ----
 @api_router.get("/events/{event_id}/employees")
 async def list_employees(event_id: str, request: Request):
