@@ -1059,6 +1059,175 @@ async def download_employee_template(request: Request):
     return StreamingResponse(BytesIO(csv_bytes), media_type="text/csv",
                              headers={"Content-Disposition": 'attachment; filename="employee_import_template.csv"'})
 
+# ---- ANALYTICS DASHBOARD ----
+async def _build_analytics():
+    """Aggregates totals across ALL events: KPIs, monthly trend, employer breakdown."""
+    events = await db.events.find({}).to_list(2000)
+    employees = await db.employees.find({}).to_list(20000)
+    entries = await db.time_entries.find({}).to_list(50000)
+
+    emp_by_id: dict = {str(e["_id"]): e for e in employees}
+    event_by_id: dict = {str(ev["_id"]): ev for ev in events}
+
+    totals = {"gross": 0.0, "benefit_co": 0.0, "fund_co": 0.0, "deduction": 0.0,
+              "total_hours": 0.0, "events": len(events), "active_employees": 0}
+    by_month: dict = {}     # 'YYYY-MM' -> dict of totals
+    by_employer: dict = {}  # employer name -> dict of totals
+    active_emp_set = set()
+
+    for entry in entries:
+        emp = emp_by_id.get(entry.get("employee_id"))
+        ev = event_by_id.get(entry.get("event_id"))
+        if not emp or not ev:
+            continue
+        r1 = float(emp.get("rate1", 0) or 0)
+        r2 = float(emp.get("rate2", 0) or 0)
+        spr = float(emp.get("special_rate", 0) or 0)
+        gross = round(calc_gross_from_entry(r1, r2, spr, entry), 2)
+        if gross == 0 and (
+            (entry.get("st_r1", 0) + entry.get("ot_r1", 0) + entry.get("dt_r1", 0) +
+             entry.get("st_r2", 0) + entry.get("ot_r2", 0) + entry.get("dt_r2", 0) +
+             entry.get("sr_hours", 0)) == 0
+        ):
+            continue
+        active_emp_set.add(entry.get("employee_id"))
+        fp = float(ev.get("fund_pct", 0.02) or 0)
+        bp = float(ev.get("benefit_pct", 0.21) or 0)
+        dp = float(ev.get("deduction_pct", 0.05) or 0)
+        hours = (entry.get("st_r1", 0) + entry.get("ot_r1", 0) + entry.get("dt_r1", 0) +
+                 entry.get("st_r2", 0) + entry.get("ot_r2", 0) + entry.get("dt_r2", 0))
+        benefit = round(bp * gross, 2)
+        fund = round(fp * gross, 2)
+        deduct = round(dp * gross, 2)
+
+        totals["gross"] += gross
+        totals["benefit_co"] += benefit
+        totals["fund_co"] += fund
+        totals["deduction"] += deduct
+        totals["total_hours"] += hours
+
+        # Month key from event created_at
+        created = ev.get("created_at", "")
+        month_key = (created[:7] if isinstance(created, str) and len(created) >= 7 else "unknown")
+        bucket = by_month.setdefault(month_key, {"month": month_key, "gross": 0.0, "hours": 0.0, "benefit_co": 0.0, "fund_co": 0.0, "deduction": 0.0})
+        bucket["gross"] += gross
+        bucket["hours"] += hours
+        bucket["benefit_co"] += benefit
+        bucket["fund_co"] += fund
+        bucket["deduction"] += deduct
+
+        emp_label = (ev.get("employer", "") or "Unknown").strip() or "Unknown"
+        ebucket = by_employer.setdefault(emp_label, {"employer": emp_label, "gross": 0.0, "hours": 0.0, "events": set()})
+        ebucket["gross"] += gross
+        ebucket["hours"] += hours
+        ebucket["events"].add(entry.get("event_id"))
+
+    totals["active_employees"] = len(active_emp_set)
+    # Round totals
+    for k in ("gross", "benefit_co", "fund_co", "deduction", "total_hours"):
+        totals[k] = round(totals[k], 2)
+
+    monthly = sorted(by_month.values(), key=lambda x: x["month"])
+    for m in monthly:
+        for k in ("gross", "hours", "benefit_co", "fund_co", "deduction"):
+            m[k] = round(m[k], 2)
+
+    employers = sorted(
+        [{"employer": v["employer"], "gross": round(v["gross"], 2),
+          "hours": round(v["hours"], 2), "event_count": len(v["events"])}
+         for v in by_employer.values()],
+        key=lambda x: x["gross"], reverse=True,
+    )
+
+    # Recent events list (lightweight, top 10)
+    recent = sorted(events, key=lambda e: e.get("created_at", ""), reverse=True)[:10]
+    recent_events = [{
+        "id": str(e["_id"]),
+        "event_name": e.get("event_name", ""),
+        "employer": e.get("employer", ""),
+        "job_number": e.get("job_number", ""),
+        "created_at": e.get("created_at", ""),
+    } for e in recent]
+
+    return {"totals": totals, "monthly": monthly, "employers": employers, "recent_events": recent_events}
+
+@api_router.get("/analytics/dashboard")
+async def analytics_dashboard(request: Request):
+    await get_current_user(request)
+    return await _build_analytics()
+
+@api_router.get("/analytics/export/excel")
+async def analytics_export_excel(request: Request):
+    await get_current_user(request)
+    data = await _build_analytics()
+    wb = openpyxl.Workbook()
+    hdr_font = Font(bold=True, size=11)
+    hdr_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    money_fmt = '$#,##0.00'
+    thin = Side(style='thin')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # --- Sheet 1: Overview ---
+    ws = wb.active
+    ws.title = "Overview"
+    ws.append(["Metric", "Value"])
+    for cell in ws[1]:
+        cell.font = hdr_font; cell.fill = hdr_fill; cell.border = border
+    rows = [
+        ("Total Gross Payroll", data["totals"]["gross"], money_fmt),
+        ("Total Benefits", data["totals"]["benefit_co"], money_fmt),
+        ("Total Fund Contributions", data["totals"]["fund_co"], money_fmt),
+        ("Total Deductions", data["totals"]["deduction"], money_fmt),
+        ("Total Hours Worked", data["totals"]["total_hours"], '#,##0.00'),
+        ("Active Employees (with hours)", data["totals"]["active_employees"], '0'),
+        ("Total Events", data["totals"]["events"], '0'),
+    ]
+    for label, val, fmt in rows:
+        ws.append([label, val])
+        ws.cell(row=ws.max_row, column=2).number_format = fmt
+        for cell in ws[ws.max_row]:
+            cell.border = border
+    ws.column_dimensions['A'].width = 32
+    ws.column_dimensions['B'].width = 22
+
+    # --- Sheet 2: Monthly Trend ---
+    ws2 = wb.create_sheet("Monthly")
+    ws2.append(["Month", "Gross", "Benefits", "Fund", "Deductions", "Hours"])
+    for cell in ws2[1]:
+        cell.font = hdr_font; cell.fill = hdr_fill; cell.border = border
+    for m in data["monthly"]:
+        ws2.append([m["month"], m["gross"], m["benefit_co"], m["fund_co"], m["deduction"], m["hours"]])
+        for c in [2, 3, 4, 5]:
+            ws2.cell(row=ws2.max_row, column=c).number_format = money_fmt
+        ws2.cell(row=ws2.max_row, column=6).number_format = '#,##0.00'
+        for cell in ws2[ws2.max_row]:
+            cell.border = border
+    for col_letter, w in zip("ABCDEF", [14, 16, 16, 16, 16, 14]):
+        ws2.column_dimensions[col_letter].width = w
+
+    # --- Sheet 3: By Employer ---
+    ws3 = wb.create_sheet("By Employer")
+    ws3.append(["Employer", "Events", "Hours", "Gross"])
+    for cell in ws3[1]:
+        cell.font = hdr_font; cell.fill = hdr_fill; cell.border = border
+    for e in data["employers"]:
+        ws3.append([e["employer"], e["event_count"], e["hours"], e["gross"]])
+        ws3.cell(row=ws3.max_row, column=3).number_format = '#,##0.00'
+        ws3.cell(row=ws3.max_row, column=4).number_format = money_fmt
+        for cell in ws3[ws3.max_row]:
+            cell.border = border
+    for col_letter, w in zip("ABCD", [28, 10, 14, 18]):
+        ws3.column_dimensions[col_letter].width = w
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="payroll_analytics.xlsx"'},
+    )
+
 # ---- SUM TOTALS ----
 async def _get_sum_totals_data(event_id: str):
     event = await db.events.find_one({"_id": ObjectId(event_id)})
