@@ -8,6 +8,7 @@ from starlette.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os
+import json
 import logging
 import bcrypt
 import jwt
@@ -107,14 +108,51 @@ async def require_editor(request: Request):
     return user
 
 # ---- AUTH ENDPOINTS ----
+# Login rate limiter: max 5 failed attempts per (IP + email) in a 15-minute
+# sliding window. Successful login resets the counter for that key.
+_LOGIN_FAIL_WINDOW_SEC = 15 * 60
+_LOGIN_FAIL_MAX = 5
+_login_fails: dict = {}  # { (ip, email): [timestamps...] }
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+def _login_rate_check(key: tuple) -> tuple[bool, int]:
+    """Returns (allowed, retry_after_seconds). Prunes old entries."""
+    now = datetime.now(timezone.utc).timestamp()
+    cutoff = now - _LOGIN_FAIL_WINDOW_SEC
+    attempts = [t for t in _login_fails.get(key, []) if t > cutoff]
+    _login_fails[key] = attempts
+    if len(attempts) >= _LOGIN_FAIL_MAX:
+        retry_after = int(attempts[0] + _LOGIN_FAIL_WINDOW_SEC - now) + 1
+        return False, max(retry_after, 1)
+    return True, 0
+
 @api_router.post("/auth/login")
 async def login(request: Request, response: Response):
     body = await request.json()
     email = body.get("email", "").strip().lower()
     password = body.get("password", "")
+    key = (_client_ip(request), email)
+
+    allowed, retry_after = _login_rate_check(key)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed login attempts. Try again in {retry_after // 60 + 1} minute(s).",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(password, user["password_hash"]):
+        _login_fails.setdefault(key, []).append(datetime.now(timezone.utc).timestamp())
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Successful login: reset counter for this key
+    _login_fails.pop(key, None)
     user_id = str(user["_id"])
     access_token = create_access_token(user_id, email)
     refresh_token = create_refresh_token(user_id)
@@ -127,6 +165,22 @@ async def logout(response: Response):
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
     return {"message": "Logged out"}
+
+# ---- HEALTH CHECK ----
+@api_router.get("/health")
+async def health():
+    """Public uptime probe. Returns 200 + db status, or 503 if DB is unreachable."""
+    db_ok = False
+    try:
+        await client.admin.command("ping")
+        db_ok = True
+    except Exception as e:
+        logger.warning(f"Health check DB ping failed: {e}")
+    payload = {"status": "ok" if db_ok else "degraded", "db_ok": db_ok,
+               "timestamp": datetime.now(timezone.utc).isoformat()}
+    if not db_ok:
+        return Response(content=json.dumps(payload), media_type="application/json", status_code=503)
+    return payload
 
 @api_router.get("/auth/me")
 async def get_me(request: Request):
