@@ -53,6 +53,19 @@ export default function DashboardPage() {
     } catch { toast.error('Export failed'); }
   };
 
+  const handleEmployeeReport = async () => {
+    try {
+      const res = await api.get('/analytics/employee-report/excel', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'employee_report.xlsx';
+      a.click();
+      window.URL.revokeObjectURL(url);
+      toast.success('Employee report exported');
+    } catch { toast.error('Export failed'); }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border px-6 py-3 flex items-center justify-between sticky top-0 bg-background z-50">
@@ -83,9 +96,14 @@ export default function DashboardPage() {
             <h2 className="font-heading text-2xl font-bold tracking-tight">Dashboard</h2>
             <p className="text-xs text-muted-foreground mt-1">Cross-event totals and trends. Updates as you enter hours.</p>
           </div>
-          <Button onClick={handleExport} data-testid="export-analytics-excel-button" className="rounded-sm gap-2">
-            <FileSpreadsheet className="h-4 w-4" /> Export Excel
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleExport} data-testid="export-analytics-excel-button" className="rounded-sm gap-2" variant="outline">
+              <FileSpreadsheet className="h-4 w-4" /> Dashboard Excel
+            </Button>
+            <Button onClick={handleEmployeeReport} data-testid="export-employee-report-button" className="rounded-sm gap-2">
+              <FileSpreadsheet className="h-4 w-4" /> Employee Report
+            </Button>
+          </div>
         </div>
 
         {loading ? (

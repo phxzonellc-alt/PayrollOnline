@@ -1228,6 +1228,165 @@ async def analytics_export_excel(request: Request):
         headers={"Content-Disposition": 'attachment; filename="payroll_analytics.xlsx"'},
     )
 
+@api_router.get("/analytics/employee-report/excel")
+async def analytics_employee_report_excel(request: Request):
+    """Per-employee aggregated report across ALL events. Excel only."""
+    await get_current_user(request)
+    events = await db.events.find({}).to_list(2000)
+    employees = await db.employees.find({}).to_list(20000)
+    entries = await db.time_entries.find({}).to_list(50000)
+
+    emp_by_id: dict = {str(e["_id"]): e for e in employees}
+    event_by_id: dict = {str(ev["_id"]): ev for ev in events}
+
+    # Group by (name, dept_emp_num) across events
+    agg: dict = {}
+
+    # Pre-populate buckets for ALL employees so people with zero hours still appear
+    for emp in employees:
+        name = (emp.get("name", "") or "").strip()
+        dept = (emp.get("dept_emp_num", "") or "").strip()
+        if not name and not dept:
+            continue
+        key = (name.lower(), dept.lower())
+        agg.setdefault(key, {
+            "name": name, "dept_emp_num": dept,
+            "hours": 0.0, "sr_hours": 0.0, "gross": 0.0, "benefit_co": 0.0,
+            "fund_co": 0.0, "deduction": 0.0, "events": set(), "rows": [],
+        })
+
+    for entry in entries:
+        emp = emp_by_id.get(entry.get("employee_id"))
+        ev = event_by_id.get(entry.get("event_id"))
+        if not emp or not ev:
+            continue
+        hours = (entry.get("st_r1", 0) + entry.get("ot_r1", 0) + entry.get("dt_r1", 0) +
+                 entry.get("st_r2", 0) + entry.get("ot_r2", 0) + entry.get("dt_r2", 0))
+        sr_hours = entry.get("sr_hours", 0)
+        if hours == 0 and sr_hours == 0:
+            continue
+        r1 = float(emp.get("rate1", 0) or 0)
+        r2 = float(emp.get("rate2", 0) or 0)
+        spr = float(emp.get("special_rate", 0) or 0)
+        gross = round(calc_gross_from_entry(r1, r2, spr, entry), 2)
+        bp = float(ev.get("benefit_pct", 0.21) or 0)
+        fp = float(ev.get("fund_pct", 0.02) or 0)
+        dp = float(ev.get("deduction_pct", 0.05) or 0)
+        benefit = round(bp * gross, 2)
+        fund = round(fp * gross, 2)
+        deduct = round(dp * gross, 2)
+
+        name = (emp.get("name", "") or "").strip()
+        dept = (emp.get("dept_emp_num", "") or "").strip()
+        key = (name.lower(), dept.lower())
+        bucket = agg.setdefault(key, {
+            "name": name, "dept_emp_num": dept,
+            "hours": 0.0, "sr_hours": 0.0, "gross": 0.0, "benefit_co": 0.0,
+            "fund_co": 0.0, "deduction": 0.0, "events": set(), "rows": [],
+        })
+        bucket["hours"] += hours
+        bucket["sr_hours"] += sr_hours
+        bucket["gross"] += gross
+        bucket["benefit_co"] += benefit
+        bucket["fund_co"] += fund
+        bucket["deduction"] += deduct
+        bucket["events"].add(entry.get("event_id"))
+        bucket["rows"].append({
+            "event_name": ev.get("event_name", ""),
+            "employer": ev.get("employer", ""),
+            "job_number": ev.get("job_number", ""),
+            "day": entry.get("day_number", ""),
+            "hours": hours, "sr_hours": sr_hours,
+            "gross": gross, "benefit": benefit, "fund": fund, "deduct": deduct,
+        })
+
+    # Sort: employees with hours first (by gross desc), then zero-hour employees alphabetically
+    rows = sorted(agg.values(), key=lambda x: (-x["gross"], x["name"].lower()))
+
+    # Build workbook
+    wb = openpyxl.Workbook()
+    hdr_font = Font(bold=True, size=11)
+    hdr_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    total_fill = PatternFill(start_color="E8EAF0", end_color="E8EAF0", fill_type="solid")
+    money_fmt = '$#,##0.00'
+    hours_fmt = '#,##0.00'
+    thin = Side(style='thin')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # --- Sheet 1: Per-Employee Summary ---
+    ws = wb.active
+    ws.title = "Employee Summary"
+    headers = ["Employee", "Dept/Emp #", "Events", "Total Hours", "SR Hours",
+               "Gross", "Benefits", "Fund", "Deductions", "Net (Gross - Deductions)"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = hdr_font; cell.fill = hdr_fill; cell.border = border
+        cell.alignment = Alignment(horizontal='center', wrap_text=True)
+    for r in rows:
+        net = round(r["gross"] - r["deduction"], 2)
+        ws.append([r["name"], r["dept_emp_num"], len(r["events"]),
+                   round(r["hours"], 2), round(r["sr_hours"], 2),
+                   round(r["gross"], 2), round(r["benefit_co"], 2),
+                   round(r["fund_co"], 2), round(r["deduction"], 2), net])
+        for c in [4, 5]:
+            ws.cell(row=ws.max_row, column=c).number_format = hours_fmt
+        for c in [6, 7, 8, 9, 10]:
+            ws.cell(row=ws.max_row, column=c).number_format = money_fmt
+        for cell in ws[ws.max_row]:
+            cell.border = border
+            if cell.column > 2:
+                cell.alignment = Alignment(horizontal='right')
+    # Totals row
+    if rows:
+        t_hours = sum(r["hours"] for r in rows)
+        t_sr = sum(r["sr_hours"] for r in rows)
+        t_gross = sum(r["gross"] for r in rows)
+        t_benefit = sum(r["benefit_co"] for r in rows)
+        t_fund = sum(r["fund_co"] for r in rows)
+        t_deduct = sum(r["deduction"] for r in rows)
+        ws.append(["TOTALS", "", "", round(t_hours, 2), round(t_sr, 2),
+                   round(t_gross, 2), round(t_benefit, 2), round(t_fund, 2),
+                   round(t_deduct, 2), round(t_gross - t_deduct, 2)])
+        for cell in ws[ws.max_row]:
+            cell.font = Font(bold=True); cell.fill = total_fill; cell.border = border
+        for c in [4, 5]:
+            ws.cell(row=ws.max_row, column=c).number_format = hours_fmt
+        for c in [6, 7, 8, 9, 10]:
+            ws.cell(row=ws.max_row, column=c).number_format = money_fmt
+    for col_letter, w in zip("ABCDEFGHIJ", [26, 14, 9, 12, 11, 14, 14, 12, 14, 22]):
+        ws.column_dimensions[col_letter].width = w
+
+    # --- Sheet 2: Per-Employee Per-Event Detail ---
+    ws2 = wb.create_sheet("Detail by Event")
+    headers2 = ["Employee", "Dept/Emp #", "Event", "Employer", "Job #", "Day",
+                "Hours", "SR Hours", "Gross", "Benefits", "Fund", "Deductions"]
+    ws2.append(headers2)
+    for cell in ws2[1]:
+        cell.font = hdr_font; cell.fill = hdr_fill; cell.border = border
+        cell.alignment = Alignment(horizontal='center', wrap_text=True)
+    for r in rows:
+        for sub in r["rows"]:
+            ws2.append([r["name"], r["dept_emp_num"], sub["event_name"], sub["employer"],
+                        sub["job_number"], sub["day"], sub["hours"], sub["sr_hours"],
+                        sub["gross"], sub["benefit"], sub["fund"], sub["deduct"]])
+            for c in [7, 8]:
+                ws2.cell(row=ws2.max_row, column=c).number_format = hours_fmt
+            for c in [9, 10, 11, 12]:
+                ws2.cell(row=ws2.max_row, column=c).number_format = money_fmt
+            for cell in ws2[ws2.max_row]:
+                cell.border = border
+    for col_letter, w in zip("ABCDEFGHIJKL", [24, 14, 22, 18, 10, 6, 10, 10, 14, 14, 12, 14]):
+        ws2.column_dimensions[col_letter].width = w
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="employee_report.xlsx"'},
+    )
+
 # ---- SUM TOTALS ----
 async def _get_sum_totals_data(event_id: str):
     event = await db.events.find_one({"_id": ObjectId(event_id)})
