@@ -6,12 +6,13 @@ import '@/App.css';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, FileSpreadsheet, FileText, LogOut } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, FileText, LogOut, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { DAYS } from '../lib/payroll';
 import InfoTab from '../components/payroll/InfoTab';
 import EmployeesTab from '../components/payroll/EmployeesTab';
 import DayTab from '../components/payroll/DayTab';
 import SummaryTab from '../components/payroll/SummaryTab';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
 export default function EventDetailPage() {
   const { id } = useParams();
@@ -220,6 +221,8 @@ export default function EventDetailPage() {
     } catch (err) { console.error('Save edit failed:', err); toast.error('Failed to update'); }
   }, [id, editForm]);
 
+  const [importReport, setImportReport] = useState(null);
+
   const handleImportFile = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -228,8 +231,23 @@ export default function EventDetailPage() {
     try {
       const res = await api.post(`/events/${id}/employees/import`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       setEmployees(prev => [...prev, ...res.data.employees]);
-      toast.success(`Imported ${res.data.imported} employees`);
-    } catch (err) { console.error('Import failed:', err); toast.error('Import failed'); }
+      const { imported, skipped, errors = [], warnings = [] } = res.data;
+      if (skipped === 0 && warnings.length === 0) {
+        toast.success(`Imported ${imported} employees`);
+      } else {
+        // Open detailed report for the user
+        setImportReport({ imported, skipped, errors, warnings });
+        if (imported > 0) {
+          toast.success(`Imported ${imported}, ${skipped} skipped`);
+        } else {
+          toast.error(`Import failed: ${skipped} row${skipped !== 1 ? 's' : ''} had issues`);
+        }
+      }
+    } catch (err) {
+      console.error('Import failed:', err);
+      const msg = err?.response?.data?.detail || 'Import failed';
+      toast.error(msg);
+    }
     e.target.value = '';
   }, [id]);
 
@@ -432,6 +450,91 @@ export default function EventDetailPage() {
           <SummaryTab summaryData={summaryData} handleExport={handleExport} handleFullReportPdf={handleFullReportPdf} />
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!importReport} onOpenChange={(o) => !o && setImportReport(null)}>
+        <DialogContent className="rounded-sm max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="import-report-dialog">
+          <DialogHeader>
+            <DialogTitle className="font-heading font-bold flex items-center gap-2">
+              {importReport?.imported > 0 ? (
+                <CheckCircle2 className="h-5 w-5 text-primary" />
+              ) : (
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              )}
+              Import Report
+            </DialogTitle>
+          </DialogHeader>
+          {importReport && (
+            <div className="space-y-4 mt-2">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="border border-border p-3">
+                  <p className="text-[10px] tracking-[0.2em] uppercase font-semibold text-muted-foreground">Imported</p>
+                  <p className="font-heading text-2xl font-black">{importReport.imported}</p>
+                </div>
+                <div className="border border-border p-3">
+                  <p className="text-[10px] tracking-[0.2em] uppercase font-semibold text-muted-foreground">Skipped</p>
+                  <p className={`font-heading text-2xl font-black ${importReport.skipped > 0 ? 'text-destructive' : ''}`}>{importReport.skipped}</p>
+                </div>
+              </div>
+
+              {importReport.errors.length > 0 && (
+                <div data-testid="import-errors-list">
+                  <p className="text-xs tracking-[0.2em] uppercase font-semibold text-destructive mb-2">Errors (rows skipped)</p>
+                  <div className="border border-border max-h-60 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted">
+                        <tr className="border-b border-border">
+                          <th className="text-left px-3 py-2 w-16">Row</th>
+                          <th className="text-left px-3 py-2 w-40">Name</th>
+                          <th className="text-left px-3 py-2">Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importReport.errors.map((e, i) => (
+                          <tr key={i} className="border-b border-border last:border-b-0">
+                            <td className="px-3 py-2 font-mono text-muted-foreground">{e.row}</td>
+                            <td className="px-3 py-2 font-medium">{e.name || <span className="text-muted-foreground italic">empty</span>}</td>
+                            <td className="px-3 py-2 text-destructive">{e.reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {importReport.warnings.length > 0 && (
+                <div data-testid="import-warnings-list">
+                  <p className="text-xs tracking-[0.2em] uppercase font-semibold text-amber-600 mb-2">Warnings (imported with caveats)</p>
+                  <div className="border border-border max-h-40 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted">
+                        <tr className="border-b border-border">
+                          <th className="text-left px-3 py-2 w-16">Row</th>
+                          <th className="text-left px-3 py-2 w-40">Name</th>
+                          <th className="text-left px-3 py-2">Note</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importReport.warnings.map((w, i) => (
+                          <tr key={i} className="border-b border-border last:border-b-0">
+                            <td className="px-3 py-2 font-mono text-muted-foreground">{w.row}</td>
+                            <td className="px-3 py-2 font-medium">{w.name}</td>
+                            <td className="px-3 py-2">{w.reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-2">
+                <Button onClick={() => setImportReport(null)} className="rounded-sm" data-testid="import-report-close-button">Close</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

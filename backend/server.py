@@ -477,24 +477,59 @@ def _detect_columns(header):
     }
 
 def _safe_float(val):
+    """Returns (value, error). error is None on success, otherwise a short message."""
+    if val is None or (isinstance(val, str) and not val.strip()):
+        return 0.0, None
     try:
-        return float(val) if val else 0
+        return float(val), None
     except (ValueError, TypeError):
-        return 0
+        return 0.0, f"could not parse '{val}' as a number"
 
-def _parse_emp_row(row, cols, event_id, sort_order):
+def _validate_emp_row(row, cols, event_id, sort_order):
+    """Returns (employee_dict | None, [warnings], error_message | None).
+    None employee + error_message means skip the row. Warnings are non-fatal.
+    """
+    warnings: list = []
+
+    # Skip totally empty rows silently
+    if not any((c is not None and str(c).strip()) for c in row):
+        return None, [], "empty row"
+
+    # Required: Name
     name_val = row[cols["name"]] if len(row) > cols["name"] else None
     if not name_val or not str(name_val).strip():
-        return None
+        return None, [], "missing Name"
+    name = str(name_val).strip()
+    if len(name) > 200:
+        warnings.append("Name truncated to 200 chars")
+        name = name[:200]
+
+    # Optional: dept/emp number (any string)
+    dept_val = row[cols["dept"]] if len(row) > cols["dept"] else None
+    dept = str(dept_val).strip() if dept_val is not None and str(dept_val).strip() else ""
+
+    # Rates: must be numbers, default to 0 if blank, error if non-numeric
+    r1, e1 = _safe_float(row[cols["r1"]] if len(row) > cols["r1"] else None)
+    r2, e2 = _safe_float(row[cols["r2"]] if len(row) > cols["r2"] else None)
+    sr, esr = _safe_float(row[cols["sr"]] if len(row) > cols["sr"] else None)
+    for label, err in [("Rate 1", e1), ("Rate 2", e2), ("Special Rate", esr)]:
+        if err:
+            return None, warnings, f"{label}: {err}"
+    for label, val in [("Rate 1", r1), ("Rate 2", r2), ("Special Rate", sr)]:
+        if val < 0:
+            return None, warnings, f"{label} cannot be negative ({val})"
+        if val > 10000:
+            warnings.append(f"{label} unusually high ({val})")
+
     return {
         "event_id": event_id,
-        "name": str(name_val).strip(),
-        "dept_emp_num": str(row[cols["dept"]]).strip() if len(row) > cols["dept"] and row[cols["dept"]] else "",
-        "rate1": _safe_float(row[cols["r1"]] if len(row) > cols["r1"] else 0),
-        "rate2": _safe_float(row[cols["r2"]] if len(row) > cols["r2"] else 0),
-        "special_rate": _safe_float(row[cols["sr"]] if len(row) > cols["sr"] else 0),
+        "name": name,
+        "dept_emp_num": dept,
+        "rate1": r1,
+        "rate2": r2,
+        "special_rate": sr,
         "sort_order": sort_order,
-    }
+    }, warnings, None
 
 # ---- BULK EMPLOYEE IMPORT ----
 @api_router.post("/events/{event_id}/employees/import")
@@ -502,40 +537,62 @@ async def import_employees(event_id: str, request: Request, file: UploadFile = F
     await require_editor(request)
     content = await file.read()
     filename = file.filename or ""
-    imported = []
+    imported: list = []
+    errors: list = []     # rows skipped with reason
+    warnings: list = []   # rows imported with caveats
     count = await db.employees.count_documents({"event_id": event_id})
 
-    if filename.endswith(('.xlsx', '.xls')):
-        wb = openpyxl.load_workbook(BytesIO(content), data_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
-        header = [str(c).strip().lower() if c else "" for c in rows[0]] if rows else []
+    def _ingest_rows(raw_rows):
+        nonlocal count
+        if not raw_rows:
+            return [], _detect_columns([])
+        header = [str(c).strip().lower() if c is not None else "" for c in raw_rows[0]]
         cols = _detect_columns(header)
-        for row in rows[1:]:
-            count += 1
-            emp = _parse_emp_row(list(row), cols, event_id, count)
-            if not emp:
-                continue
-            result = await db.employees.insert_one(emp)
-            emp["id"] = str(result.inserted_id)
-            emp.pop("_id", None)
-            imported.append(emp)
-    else:
-        text = content.decode('utf-8-sig')
-        reader = csv.reader(StringIO(text))
-        header = [c.strip().lower() for c in next(reader, [])]
-        cols = _detect_columns(header)
-        for row in reader:
-            count += 1
-            emp = _parse_emp_row(row, cols, event_id, count)
-            if not emp:
-                continue
-            result = await db.employees.insert_one(emp)
-            emp["id"] = str(result.inserted_id)
-            emp.pop("_id", None)
-            imported.append(emp)
+        return raw_rows[1:], cols
 
-    return {"imported": len(imported), "employees": imported}
+    try:
+        if filename.endswith(('.xlsx', '.xls')):
+            wb = openpyxl.load_workbook(BytesIO(content), data_only=True)
+            ws = wb.active
+            raw_rows = [list(r) for r in ws.iter_rows(values_only=True)]
+        else:
+            text = content.decode('utf-8-sig', errors='replace')
+            reader = csv.reader(StringIO(text))
+            raw_rows = [list(r) for r in reader]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read file: {e}")
+
+    data_rows, cols = _ingest_rows(raw_rows)
+
+    for idx, row in enumerate(data_rows, start=2):  # row 1 is header, so data starts at row 2
+        emp, row_warnings, err = _validate_emp_row(row, cols, event_id, count + 1)
+        if err == "empty row":
+            continue
+        if err:
+            errors.append({"row": idx, "name": _safe_row_name(row, cols), "reason": err})
+            continue
+        count += 1
+        result = await db.employees.insert_one(emp)
+        emp["id"] = str(result.inserted_id)
+        emp.pop("_id", None)
+        imported.append(emp)
+        for w in row_warnings:
+            warnings.append({"row": idx, "name": emp["name"], "reason": w})
+
+    return {
+        "imported": len(imported),
+        "skipped": len(errors),
+        "employees": imported,
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+def _safe_row_name(row, cols):
+    try:
+        v = row[cols["name"]]
+        return str(v).strip() if v is not None else ""
+    except (IndexError, KeyError, TypeError):
+        return ""
 
 # ---- TIME ENTRIES ----
 @api_router.get("/events/{event_id}/time-entries")
