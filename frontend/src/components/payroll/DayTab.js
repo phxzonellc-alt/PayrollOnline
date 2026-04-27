@@ -1,8 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { calcGross, $f, HOUR_FIELDS } from '../../lib/payroll';
-import { Save, Eye, Edit3, Printer, Search, X } from 'lucide-react';
+import { calcGross, $f, HOUR_FIELDS, DAYS } from '../../lib/payroll';
+import { Save, Eye, Edit3, Printer, Search, X, Copy, Sparkles } from 'lucide-react';
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from '../ui/popover';
 
 function DailyStatement({ dailyStatement, dayNum }) {
   const emps = useMemo(() => dailyStatement?.employees || [], [dailyStatement?.employees]);
@@ -101,16 +104,33 @@ function DailyStatement({ dailyStatement, dayNum }) {
 
 export default function DayTab({
   dayNum, event, employees, timeEntries, updateHour, saveDay, saving,
+  fillColumn, copyFromDay,
   dayViewMode, setDayViewMode, loadDailyStatement, dailyStatement,
   handleDayStatementPdf, empFilter, setEmpFilter, fp, bp, dp, isEditor,
 }) {
   const isStatement = dayViewMode === 'statement';
   const dq = empFilter.toLowerCase();
+  const [fillField, setFillField] = useState(null);  // which column header was clicked
+  const [fillValue, setFillValue] = useState('');
+  const [copyOpen, setCopyOpen] = useState(false);
 
   const dayFiltered = useMemo(() =>
     dq ? employees.filter(e => e.name.toLowerCase().includes(dq) || (e.dept_emp_num || '').toLowerCase().includes(dq)) : employees,
     [employees, dq]
   );
+
+  const fieldLabels = {
+    st_r1: 'ST (Rate 1)', ot_r1: 'OT (Rate 1)', dt_r1: 'DT (Rate 1)',
+    st_r2: 'ST (Rate 2)', ot_r2: 'OT (Rate 2)', dt_r2: 'DT (Rate 2)',
+    sr_hours: 'SR Hours',
+  };
+
+  const onFillSubmit = (scope) => {
+    if (fillField == null) return;
+    fillColumn(fillField, fillValue, scope);
+    setFillField(null);
+    setFillValue('');
+  };
 
   const getVal = (empId, field) => timeEntries[empId]?.[field] || 0;
 
@@ -159,9 +179,35 @@ export default function DayTab({
           {dq && <span className="text-xs text-muted-foreground">{dayFiltered.length}/{employees.length}</span>}
         </div>
         {!isStatement && isEditor && (
-          <Button onClick={saveDay} disabled={saving} className="rounded-sm gap-2" data-testid="save-day-button">
-            <Save className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Day'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Popover open={copyOpen} onOpenChange={setCopyOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="rounded-sm gap-2" data-testid="copy-from-day-button">
+                  <Copy className="h-4 w-4" /> Copy from...
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-44 p-2 rounded-sm" align="end">
+                <p className="text-[10px] tracking-[0.2em] uppercase font-semibold text-muted-foreground px-2 pb-2">Copy hours from</p>
+                <div className="grid grid-cols-2 gap-1">
+                  {DAYS.filter(d => d !== dayNum).map(d => (
+                    <button
+                      key={d}
+                      onClick={() => { copyFromDay(d); setCopyOpen(false); }}
+                      data-testid={`copy-from-day-${d}`}
+                      className="px-2 py-1.5 text-xs hover:bg-muted rounded-sm transition-colors text-left"
+                    >
+                      Day {d}
+                      {event.days?.[d]?.date && <span className="text-muted-foreground ml-1">({event.days[d].date})</span>}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground px-2 pt-2 border-t border-border mt-1">After copying, click <strong>Save Day</strong>.</p>
+              </PopoverContent>
+            </Popover>
+            <Button onClick={saveDay} disabled={saving} className="rounded-sm gap-2" data-testid="save-day-button">
+              <Save className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Day'}
+            </Button>
+          </div>
         )}
         {isStatement && (
           <Button variant="outline" onClick={() => handleDayStatementPdf(dayNum)} className="rounded-sm gap-2" data-testid="print-day-statement-pdf">
@@ -189,9 +235,69 @@ export default function DayTab({
                 </tr>
                 <tr>
                   <th></th><th></th><th></th>
-                  <th>ST</th><th>OT</th><th>DT</th>
-                  <th className="r2-col">ST</th><th className="r2-col">OT</th><th className="r2-col">DT</th>
-                  <th>Hrs</th><th></th><th></th>
+                  {HOUR_FIELDS.map((f) => {
+                    const label = f.startsWith('st') ? 'ST' : f.startsWith('ot') ? 'OT' : f.startsWith('dt') ? 'DT' : 'Hrs';
+                    const isR2 = f.includes('r2');
+                    if (!isEditor) {
+                      return <th key={f} className={isR2 ? 'r2-col' : ''}>{label}</th>;
+                    }
+                    return (
+                      <th key={f} className={isR2 ? 'r2-col' : ''}>
+                        <Popover open={fillField === f} onOpenChange={(o) => { if (!o) { setFillField(null); setFillValue(''); } }}>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={() => setFillField(f)}
+                              data-testid={`fill-header-${f}`}
+                              className="inline-flex items-center gap-1 hover:text-primary transition-colors w-full justify-center"
+                              title={`Fill ${fieldLabels[f]} for all employees`}
+                            >
+                              {label}
+                              <Sparkles className="h-3 w-3 opacity-40" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-56 p-3 rounded-sm" align="center">
+                            <p className="text-[10px] tracking-[0.2em] uppercase font-semibold text-muted-foreground mb-2">Fill {fieldLabels[f]}</p>
+                            <Input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              autoFocus
+                              value={fillValue}
+                              onChange={(e) => setFillValue(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') onFillSubmit(dq ? 'filtered' : 'all'); }}
+                              placeholder="Hours (e.g. 8)"
+                              className="rounded-sm h-8 text-sm"
+                              data-testid={`fill-input-${f}`}
+                            />
+                            <div className="flex flex-col gap-1 mt-2">
+                              <Button
+                                size="sm"
+                                onClick={() => onFillSubmit('all')}
+                                className="rounded-sm h-8 text-xs justify-start"
+                                data-testid={`fill-apply-all-${f}`}
+                              >
+                                Apply to all {employees.length} employees
+                              </Button>
+                              {dq && dayFiltered.length !== employees.length && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => onFillSubmit('filtered')}
+                                  className="rounded-sm h-8 text-xs justify-start"
+                                  data-testid={`fill-apply-filtered-${f}`}
+                                >
+                                  Apply to {dayFiltered.length} filtered
+                                </Button>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-2 border-t border-border pt-2">Replaces existing {label} values. Click <strong>Save Day</strong> after.</p>
+                          </PopoverContent>
+                        </Popover>
+                      </th>
+                    );
+                  })}
+                  <th></th><th></th>
                 </tr>
               </thead>
               <tbody>

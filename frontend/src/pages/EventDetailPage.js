@@ -303,6 +303,59 @@ export default function EventDetailPage() {
     }));
   }, []);
 
+  const fillColumn = useCallback((field, value, scope = 'all') => {
+    const num = parseFloat(value) || 0;
+    dayDirtyRef.current = true;
+    const targets = scope === 'filtered'
+      ? employees.filter(e => {
+          const q = empFilter.toLowerCase();
+          return !q || e.name.toLowerCase().includes(q) || (e.dept_emp_num || '').toLowerCase().includes(q);
+        })
+      : employees;
+    setTimeEntries(prev => {
+      const next = { ...prev };
+      targets.forEach(emp => {
+        next[emp.id] = { ...(next[emp.id] || {}), employee_id: emp.id, [field]: num };
+      });
+      return next;
+    });
+  }, [employees, empFilter]);
+
+  const copyFromDay = useCallback(async (sourceDay) => {
+    const dayNum = parseInt(activeTab.split('-')[1]);
+    if (sourceDay === dayNum) {
+      toast.error('Choose a different day to copy from');
+      return;
+    }
+    try {
+      const res = await api.get(`/events/${id}/time-entries?day=${sourceDay}`);
+      const map = {};
+      res.data.forEach(e => {
+        map[e.employee_id] = {
+          employee_id: e.employee_id,
+          st_r1: e.st_r1 || 0, ot_r1: e.ot_r1 || 0, dt_r1: e.dt_r1 || 0,
+          st_r2: e.st_r2 || 0, ot_r2: e.ot_r2 || 0, dt_r2: e.dt_r2 || 0,
+          sr_hours: e.sr_hours || 0,
+        };
+      });
+      // Ensure every employee has a record (so Save Day clears any rows that source-day didn't have)
+      employees.forEach(emp => {
+        if (!map[emp.id]) {
+          map[emp.id] = { employee_id: emp.id, st_r1: 0, ot_r1: 0, dt_r1: 0, st_r2: 0, ot_r2: 0, dt_r2: 0, sr_hours: 0 };
+        }
+      });
+      setTimeEntries(map);
+      dayDirtyRef.current = true;
+      const filledCount = Object.values(map).filter(e =>
+        (e.st_r1 + e.ot_r1 + e.dt_r1 + e.st_r2 + e.ot_r2 + e.dt_r2 + e.sr_hours) > 0
+      ).length;
+      toast.success(`Copied from Day ${sourceDay} (${filledCount} with hours). Click Save Day to commit.`);
+    } catch (err) {
+      console.error('Copy day failed:', err);
+      toast.error('Failed to copy');
+    }
+  }, [id, activeTab, employees]);
+
   const saveDay = useCallback(async () => {
     const dayNum = parseInt(activeTab.split('-')[1]);
     setSaving(true);
@@ -440,6 +493,7 @@ export default function EventDetailPage() {
           <TabsContent key={d} value={`day-${d}`} className="mt-0">
             <DayTab dayNum={d} event={event} employees={employees} timeEntries={timeEntries}
               updateHour={updateHour} saveDay={saveDay} saving={saving}
+              fillColumn={fillColumn} copyFromDay={copyFromDay}
               dayViewMode={dayViewMode} setDayViewMode={setDayViewMode}
               loadDailyStatement={loadDailyStatement} dailyStatement={dailyStatement}
               handleDayStatementPdf={handleDayStatementPdf}
