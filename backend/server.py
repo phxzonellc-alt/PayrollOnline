@@ -1239,21 +1239,37 @@ async def analytics_employee_report_excel(request: Request):
     emp_by_id: dict = {str(e["_id"]): e for e in employees}
     event_by_id: dict = {str(ev["_id"]): ev for ev in events}
 
-    # Group by (name, dept_emp_num) across events
+    # Group by name across events (running total per employee). Different
+    # dept numbers across events are joined into a comma-separated list.
     agg: dict = {}
+
+    def _norm_name(s: str) -> str:
+        # Collapse whitespace & lowercase for matching, so "John Doe" and "John  Doe" merge.
+        return " ".join((s or "").split()).lower()
+
+    def _merge_dept(existing: str, new: str) -> str:
+        new = (new or "").strip()
+        if not new:
+            return existing
+        existing_parts = [p.strip() for p in (existing or "").split(",") if p.strip()]
+        if new in existing_parts:
+            return existing
+        existing_parts.append(new)
+        return ", ".join(existing_parts)
 
     # Pre-populate buckets for ALL employees so people with zero hours still appear
     for emp in employees:
         name = (emp.get("name", "") or "").strip()
         dept = (emp.get("dept_emp_num", "") or "").strip()
-        if not name and not dept:
+        if not name:
             continue
-        key = (name.lower(), dept.lower())
-        agg.setdefault(key, {
-            "name": name, "dept_emp_num": dept,
+        key = _norm_name(name)
+        bucket = agg.setdefault(key, {
+            "name": name, "dept_emp_num": "",
             "hours": 0.0, "sr_hours": 0.0, "gross": 0.0, "benefit_co": 0.0,
             "fund_co": 0.0, "deduction": 0.0, "events": set(), "rows": [],
         })
+        bucket["dept_emp_num"] = _merge_dept(bucket["dept_emp_num"], dept)
 
     for entry in entries:
         emp = emp_by_id.get(entry.get("employee_id"))
@@ -1278,12 +1294,15 @@ async def analytics_employee_report_excel(request: Request):
 
         name = (emp.get("name", "") or "").strip()
         dept = (emp.get("dept_emp_num", "") or "").strip()
-        key = (name.lower(), dept.lower())
+        if not name:
+            continue
+        key = _norm_name(name)
         bucket = agg.setdefault(key, {
-            "name": name, "dept_emp_num": dept,
+            "name": name, "dept_emp_num": "",
             "hours": 0.0, "sr_hours": 0.0, "gross": 0.0, "benefit_co": 0.0,
             "fund_co": 0.0, "deduction": 0.0, "events": set(), "rows": [],
         })
+        bucket["dept_emp_num"] = _merge_dept(bucket["dept_emp_num"], dept)
         bucket["hours"] += hours
         bucket["sr_hours"] += sr_hours
         bucket["gross"] += gross
