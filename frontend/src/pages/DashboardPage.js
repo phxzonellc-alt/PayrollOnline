@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../lib/api';
 import { Button } from '../components/ui/button';
 import { toast } from 'sonner';
-import { LogOut, Users, FileSpreadsheet, ArrowLeft, BarChart3 } from 'lucide-react';
+import { LogOut, Users, FileSpreadsheet, ArrowLeft, BarChart3, BookOpen } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from 'recharts';
@@ -66,6 +66,19 @@ export default function DashboardPage() {
     } catch { toast.error('Export failed'); }
   };
 
+  const handleUserGuide = async () => {
+    try {
+      const res = await api.get('/user-guide/pdf', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'MEBO_user_guide.pdf';
+      a.click();
+      window.URL.revokeObjectURL(url);
+      toast.success('User guide downloaded');
+    } catch { toast.error('Download failed'); }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border px-6 py-3 flex items-center justify-between sticky top-0 bg-background z-50">
@@ -97,6 +110,9 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground mt-1">Cross-event totals and trends. Updates as you enter hours.</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button onClick={handleUserGuide} data-testid="export-user-guide-button" className="rounded-sm gap-2" variant="ghost">
+              <BookOpen className="h-4 w-4" /> User Guide
+            </Button>
             <Button onClick={handleExport} data-testid="export-analytics-excel-button" className="rounded-sm gap-2" variant="outline">
               <FileSpreadsheet className="h-4 w-4" /> Dashboard Excel
             </Button>

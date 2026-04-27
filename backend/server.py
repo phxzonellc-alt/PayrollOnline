@@ -1213,6 +1213,135 @@ async def analytics_dashboard(request: Request):
     await get_current_user(request)
     return await _build_analytics()
 
+# ---- USER GUIDE (one-page printable cheat sheet) ----
+@api_router.get("/user-guide/pdf")
+async def user_guide_pdf(request: Request):
+    await get_current_user(request)
+    pdf = FPDF(orientation='P', unit='in', format='Letter')
+    pdf.set_auto_page_break(auto=False)
+    pdf.add_page()
+    pdf.set_left_margin(0.5)
+    pdf.set_right_margin(0.5)
+    pdf.set_top_margin(0.4)
+    pw = 8.5 - 1.0  # 7.5"
+
+    # ---- Header ----
+    pdf.set_font('Helvetica', 'B', 18)
+    pdf.cell(pw, 0.3, "MEBO Payroll System", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font('Helvetica', '', 9)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(pw, 0.18, "User Guide  |  Quick Reference", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(0.1)
+
+    # Two-column layout: each column 3.6" wide with 0.3" gutter
+    col_w = 3.6
+    gutter = 0.3
+    left_x = 0.5
+    right_x = 0.5 + col_w + gutter
+    start_y = pdf.get_y()
+
+    def section(x, y, title, items):
+        pdf.set_xy(x, y)
+        pdf.set_font('Helvetica', 'B', 10)
+        pdf.set_fill_color(240, 240, 245)
+        pdf.cell(col_w, 0.22, f"  {title}", border=0, fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font('Helvetica', '', 8.5)
+        cur_y = pdf.get_y() + 0.04
+        for label, desc in items:
+            pdf.set_xy(x, cur_y)
+            pdf.set_font('Helvetica', 'B', 8.5)
+            pdf.cell(1.0, 0.16, label, new_x="RIGHT", new_y="TOP")
+            pdf.set_font('Helvetica', '', 8.5)
+            # Wrapped description in remaining width
+            pdf.set_xy(x + 1.0, cur_y)
+            pdf.multi_cell(col_w - 1.0, 0.16, desc, new_x="LMARGIN", new_y="NEXT")
+            cur_y = pdf.get_y() + 0.02
+        return cur_y + 0.12
+
+    # ---- LEFT COLUMN ----
+    y = start_y
+
+    y = section(left_x, y, "ROLES", [
+        ("Admin", "Full access + user management"),
+        ("User", "Full payroll edit, no users"),
+        ("Viewer", "Read-only + can export"),
+    ])
+
+    y = section(left_x, y, "EVENTS PAGE", [
+        ("New Event", "Create event (name/job/employer/venue)"),
+        ("Open", "Click any row in the list"),
+        ("Clone", "Copy icon: duplicates employees+rates, blanks hours"),
+        ("Delete", "Trash icon (confirms first)"),
+        ("Dashboard", "Top-right nav for analytics"),
+    ])
+
+    y = section(left_x, y, "INFO TAB", [
+        ("Pay Period", "Set start/end -> auto-fills Day 1-10 dates"),
+        ("Branding", "Company name/email/phone shown on PDF/Excel"),
+        ("Percentages", "Fund / Benefit / Deduction (saved per event)"),
+        ("Notes", "Optional per-day notes"),
+    ])
+
+    y = section(left_x, y, "EMPLOYEES TAB", [
+        ("Add", "+ button to add one at a time"),
+        ("Edit", "Pencil -> change rates -> save/cancel"),
+        ("Reorder", "Drag the grip handle"),
+        ("Sort", "Click Name or Dept header to sort"),
+        ("Search", "Filter by name or dept"),
+        ("Template", "Download CSV template"),
+        ("Import", "CSV / XLSX with per-row validation report"),
+    ])
+
+    # ---- RIGHT COLUMN ----
+    y2 = start_y
+
+    y2 = section(right_x, y2, "DAY 1-10 TABS", [
+        ("Input mode", "Spreadsheet grid: ST/OT/DT (R1+R2) + SR"),
+        ("Statement", "Toggle to read-only daily statement"),
+        ("Fill column", "Click a column header (look for sparkle icon)"),
+        ("Copy from", "Copy hours from any other day"),
+        ("Tab / Enter", "Move between cells (Shift+Enter goes back)"),
+        ("Save Day", "Commits all hour edits"),
+        ("Print PDF", "Per-day statement PDF (8.5x11 letter)"),
+    ])
+
+    y2 = section(right_x, y2, "SUMMARY TAB", [
+        ("Sum-Totals", "Read-only totals across all 10 days"),
+        ("Excel", "Full styled summary workbook"),
+        ("Summary PDF", "Landscape, branded, 5-col Grand Total"),
+        ("Full Report", "Cover + every day + summary in one PDF"),
+        ("Hidden zero", "Employees with no hours auto-hidden"),
+    ])
+
+    y2 = section(right_x, y2, "DASHBOARD", [
+        ("KPIs", "Gross, Benefits, Fund, Deductions, Hours, etc."),
+        ("Chart", "Monthly trend bar chart"),
+        ("By Employer", "Sorted by gross"),
+        ("Dashboard XLS", "Overview / Monthly / By Employer"),
+        ("Employee Rpt", "Running totals per person, all events"),
+    ])
+
+    y2 = section(right_x, y2, "TIPS", [
+        ("Auto-save", "Switching tabs saves Info/Day automatically"),
+        ("Filter+Fill", "Search to filter, then column-fill applies only to filtered"),
+        ("Clone weekly", "Use Clone Event for recurring pay periods"),
+        ("Health check", "/api/health for uptime monitors"),
+    ])
+
+    # ---- Footer ----
+    pdf.set_y(-0.5)
+    pdf.set_font('Helvetica', 'I', 7.5)
+    pdf.set_text_color(140, 140, 140)
+    pdf.cell(pw, 0.18, f"Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d')}  |  MEBO Payroll System  |  One-page Quick Reference", align='C')
+
+    pdf_bytes = pdf.output()
+    output = BytesIO(pdf_bytes)
+    return StreamingResponse(
+        output, media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="MEBO_user_guide.pdf"'},
+    )
+
 @api_router.get("/analytics/export/excel")
 async def analytics_export_excel(request: Request):
     await get_current_user(request)
