@@ -307,10 +307,19 @@ export default function DayTab({
                   const sr = getVal(emp.id, 'sr_hours');
                   const hrs = s1 + o1 + d1 + s2 + o2 + d2;
                   const gross = calcGross(emp.rate1 || 0, emp.rate2 || 0, emp.special_rate || 0, s1, o1, d1, s2, o2, d2, sr);
+                  const r1Total = s1 + o1 + d1;
+                  const r2Total = s2 + o2 + d2;
+                  const hasConflict = r1Total > 0 && r2Total > 0;
+                  const rowClass = hasConflict
+                    ? 'bg-destructive/10 border-l-2 border-l-destructive'
+                    : (i % 2 === 0 ? '' : 'bg-muted/30');
                   return (
-                    <tr key={emp.id} className={i % 2 === 0 ? '' : 'bg-muted/30'}>
+                    <tr key={emp.id} className={rowClass} title={hasConflict ? 'Conflict: hours in both Rate 1 AND Rate 2 on the same day. Use only one rate per day.' : undefined}>
                       <td className="font-mono text-xs text-muted-foreground">{i + 1}</td>
-                      <td className="text-sm font-medium max-w-[140px] truncate">{emp.name}</td>
+                      <td className="text-sm font-medium max-w-[140px] truncate">
+                        {hasConflict && <span className="text-destructive mr-1" title="R1 + R2 conflict">⚠</span>}
+                        {emp.name}
+                      </td>
                       <td className="text-xs text-muted-foreground">{emp.dept_emp_num}</td>
                       {HOUR_FIELDS.map((f, fi) => (
                         <td key={f} className={`p-0 ${f.includes('r2') ? 'r2-col' : ''}`}>

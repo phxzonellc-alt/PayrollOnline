@@ -608,6 +608,23 @@ async def batch_update_time_entries(event_id: str, request: Request):
     await require_admin(request)
     body = await request.json()
     entries = body.get("entries", [])
+
+    # Validate: an employee cannot have hours in BOTH Rate 1 and Rate 2 on the same day.
+    employees = await db.employees.find({"event_id": event_id}).to_list(500)
+    name_by_id = {str(e["_id"]): e.get("name", "") for e in employees}
+    conflicts = []
+    for entry in entries:
+        r1_total = float(entry.get("st_r1", 0) or 0) + float(entry.get("ot_r1", 0) or 0) + float(entry.get("dt_r1", 0) or 0)
+        r2_total = float(entry.get("st_r2", 0) or 0) + float(entry.get("ot_r2", 0) or 0) + float(entry.get("dt_r2", 0) or 0)
+        if r1_total > 0 and r2_total > 0:
+            conflicts.append(name_by_id.get(entry.get("employee_id"), entry.get("employee_id", "?")))
+    if conflicts:
+        names = ", ".join(conflicts[:5]) + ("..." if len(conflicts) > 5 else "")
+        raise HTTPException(
+            status_code=400,
+            detail=f"{len(conflicts)} employee(s) have hours in BOTH Rate 1 and Rate 2 on this day: {names}. Use only one rate per employee per day.",
+        )
+
     for entry in entries:
         emp_id = entry.get("employee_id")
         day_num = entry.get("day_number")

@@ -358,6 +358,18 @@ export default function EventDetailPage() {
 
   const saveDay = useCallback(async () => {
     const dayNum = parseInt(activeTab.split('-')[1]);
+    // Pre-save validation: no employee can have hours in BOTH Rate 1 and Rate 2 on the same day
+    const conflicts = employees.filter(emp => {
+      const te = timeEntries[emp.id] || {};
+      const r1 = (te.st_r1 || 0) + (te.ot_r1 || 0) + (te.dt_r1 || 0);
+      const r2 = (te.st_r2 || 0) + (te.ot_r2 || 0) + (te.dt_r2 || 0);
+      return r1 > 0 && r2 > 0;
+    });
+    if (conflicts.length > 0) {
+      const names = conflicts.slice(0, 5).map(e => e.name).join(', ') + (conflicts.length > 5 ? '...' : '');
+      toast.error(`Cannot save: ${conflicts.length} employee(s) have hours in BOTH Rate 1 and Rate 2: ${names}`);
+      return;
+    }
     setSaving(true);
     try {
       const entries = employees.map(emp => ({
@@ -370,7 +382,11 @@ export default function EventDetailPage() {
       await api.post(`/events/${id}/time-entries/batch`, { entries });
       dayDirtyRef.current = false;
       toast.success(`Day ${dayNum} saved`);
-    } catch (err) { console.error('Save day failed:', err); toast.error('Failed to save'); }
+    } catch (err) {
+      console.error('Save day failed:', err);
+      const msg = err?.response?.data?.detail || 'Failed to save';
+      toast.error(msg);
+    }
     finally { setSaving(false); }
   }, [id, activeTab, employees, timeEntries]);
 
