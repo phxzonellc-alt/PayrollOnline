@@ -358,7 +358,7 @@ export default function EventDetailPage() {
 
   const saveDay = useCallback(async () => {
     const dayNum = parseInt(activeTab.split('-')[1]);
-    // Pre-save validation: no employee can have hours in BOTH Rate 1 and Rate 2 on the same day
+    // Hard block: no employee can have hours in BOTH Rate 1 and Rate 2 on the same day
     const conflicts = employees.filter(emp => {
       const te = timeEntries[emp.id] || {};
       const r1 = (te.st_r1 || 0) + (te.ot_r1 || 0) + (te.dt_r1 || 0);
@@ -370,6 +370,19 @@ export default function EventDetailPage() {
       toast.error(`Cannot save: ${conflicts.length} employee(s) have hours in BOTH Rate 1 and Rate 2: ${names}`);
       return;
     }
+    // Soft warning: hours entered but the corresponding rate is 0
+    const missingRates = [];
+    employees.forEach(emp => {
+      const te = timeEntries[emp.id] || {};
+      const r1 = (te.st_r1 || 0) + (te.ot_r1 || 0) + (te.dt_r1 || 0);
+      const r2 = (te.st_r2 || 0) + (te.ot_r2 || 0) + (te.dt_r2 || 0);
+      const sr = te.sr_hours || 0;
+      const issues = [];
+      if (r1 > 0 && (!emp.rate1 || emp.rate1 <= 0)) issues.push('Rate 1');
+      if (r2 > 0 && (!emp.rate2 || emp.rate2 <= 0)) issues.push('Rate 2');
+      if (sr > 0 && (!emp.special_rate || emp.special_rate <= 0)) issues.push('Special Rate');
+      if (issues.length > 0) missingRates.push({ name: emp.name, issues });
+    });
     setSaving(true);
     try {
       const entries = employees.map(emp => ({
@@ -381,7 +394,13 @@ export default function EventDetailPage() {
       }));
       await api.post(`/events/${id}/time-entries/batch`, { entries });
       dayDirtyRef.current = false;
-      toast.success(`Day ${dayNum} saved`);
+      if (missingRates.length > 0) {
+        const names = missingRates.slice(0, 3).map(m => `${m.name} (${m.issues.join(', ')})`).join('; ') +
+          (missingRates.length > 3 ? `; +${missingRates.length - 3} more` : '');
+        toast.warning(`Day ${dayNum} saved. Warning: ${missingRates.length} employee(s) have hours but no rate set — gross will be $0: ${names}`, { duration: 8000 });
+      } else {
+        toast.success(`Day ${dayNum} saved`);
+      }
     } catch (err) {
       console.error('Save day failed:', err);
       const msg = err?.response?.data?.detail || 'Failed to save';

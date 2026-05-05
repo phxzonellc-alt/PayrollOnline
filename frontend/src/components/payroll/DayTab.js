@@ -310,14 +310,30 @@ export default function DayTab({
                   const r1Total = s1 + o1 + d1;
                   const r2Total = s2 + o2 + d2;
                   const hasConflict = r1Total > 0 && r2Total > 0;
-                  const rowClass = hasConflict
-                    ? 'bg-destructive/10 border-l-2 border-l-destructive'
-                    : (i % 2 === 0 ? '' : 'bg-muted/30');
+                  // Soft warning: hours entered without a rate
+                  const missingIssues = [];
+                  if (r1Total > 0 && (!emp.rate1 || emp.rate1 <= 0)) missingIssues.push('Rate 1');
+                  if (r2Total > 0 && (!emp.rate2 || emp.rate2 <= 0)) missingIssues.push('Rate 2');
+                  if (sr > 0 && (!emp.special_rate || emp.special_rate <= 0)) missingIssues.push('Special Rate');
+                  const hasMissingRate = !hasConflict && missingIssues.length > 0;
+
+                  let rowClass = i % 2 === 0 ? '' : 'bg-muted/30';
+                  if (hasConflict) {
+                    rowClass = 'bg-destructive/10 border-l-2 border-l-destructive';
+                  } else if (hasMissingRate) {
+                    rowClass = 'bg-amber-50 dark:bg-amber-950/20 border-l-2 border-l-amber-500';
+                  }
+                  const tooltip = hasConflict
+                    ? 'Conflict: hours in both Rate 1 AND Rate 2 on the same day. Use only one rate per day.'
+                    : hasMissingRate
+                      ? `Hours entered but no rate set: ${missingIssues.join(', ')}. Gross will be $0 until rate is added in Employees tab.`
+                      : undefined;
                   return (
-                    <tr key={emp.id} className={rowClass} title={hasConflict ? 'Conflict: hours in both Rate 1 AND Rate 2 on the same day. Use only one rate per day.' : undefined}>
+                    <tr key={emp.id} className={rowClass} title={tooltip}>
                       <td className="font-mono text-xs text-muted-foreground">{i + 1}</td>
                       <td className="text-sm font-medium max-w-[140px] truncate">
                         {hasConflict && <span className="text-destructive mr-1" title="R1 + R2 conflict">⚠</span>}
+                        {hasMissingRate && <span className="text-amber-600 mr-1" title={`Missing: ${missingIssues.join(', ')}`}>⚠</span>}
                         {emp.name}
                       </td>
                       <td className="text-xs text-muted-foreground">{emp.dept_emp_num}</td>
