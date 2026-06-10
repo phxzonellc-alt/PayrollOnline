@@ -73,7 +73,22 @@ export default function LandingPage() {
       setSubmitted(true);
       toast.success("You're on the list. We'll be in touch.");
     } catch (err) {
-      const msg = err?.response?.data?.detail || 'Could not submit. Please try again.';
+      // Surface as much detail as possible to help users (and us) diagnose
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      let msg;
+      if (detail) {
+        msg = detail;
+      } else if (status === 429) {
+        msg = 'Too many attempts. Please wait a minute and try again.';
+      } else if (status === 400) {
+        msg = 'Please check your email address.';
+      } else if (!err?.response) {
+        msg = 'Network error — could not reach the server. Check your connection and try again.';
+      } else {
+        msg = `Submission failed (HTTP ${status || '?'}). Please email us directly while we investigate.`;
+      }
+      console.error('Waitlist submit error:', { status, detail, err });
       toast.error(msg);
     } finally {
       setSubmitting(false);
