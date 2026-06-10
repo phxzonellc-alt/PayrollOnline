@@ -87,7 +87,7 @@ export default function DashboardPage() {
           <span className="text-xs tracking-[0.2em] uppercase font-semibold text-muted-foreground">Analytics</span>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/')} data-testid="back-to-events-button" className="rounded-sm gap-2 text-xs">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/app')} data-testid="back-to-events-button" className="rounded-sm gap-2 text-xs">
             <ArrowLeft className="h-4 w-4" /> Events
           </Button>
           {isAdmin && (

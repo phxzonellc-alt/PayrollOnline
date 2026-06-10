@@ -182,6 +182,41 @@ async def health():
         return Response(content=json.dumps(payload), media_type="application/json", status_code=503)
     return payload
 
+# ---- PUBLIC WAITLIST ----
+@api_router.post("/waitlist")
+async def join_waitlist(request: Request):
+    """Public endpoint: anyone can join the SaaS waitlist."""
+    body = await request.json()
+    email = (body.get("email", "") or "").strip().lower()
+    company = (body.get("company", "") or "").strip()[:200]
+    role = (body.get("role", "") or "").strip()[:100]
+    message = (body.get("message", "") or "").strip()[:1000]
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="Valid email required")
+    # Light rate-limit by IP (3/min)
+    ip = _client_ip(request)
+    key = ("waitlist", ip)
+    allowed, retry = _login_rate_check(key)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Too many submissions. Try again in {retry} seconds.")
+    _login_fails.setdefault(key, []).append(datetime.now(timezone.utc).timestamp())
+    # Upsert by email so dupes don't accumulate
+    await db.waitlist.update_one(
+        {"email": email},
+        {"$set": {"email": email, "company": company, "role": role, "message": message,
+                  "ip": ip, "updated_at": datetime.now(timezone.utc).isoformat()},
+         "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"message": "You're on the list. We'll be in touch."}
+
+@api_router.get("/waitlist")
+async def list_waitlist(request: Request):
+    """Admin only: see waitlist signups."""
+    await require_admin(request)
+    rows = await db.waitlist.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    return {"count": len(rows), "entries": rows}
+
 @api_router.get("/auth/me")
 async def get_me(request: Request):
     user = await get_current_user(request)

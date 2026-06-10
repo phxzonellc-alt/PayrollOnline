@@ -478,7 +478,7 @@ export default function EventDetailPage() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border px-6 py-3 flex items-center justify-between sticky top-0 bg-background z-50">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="rounded-sm" onClick={() => navigate('/')} data-testid="back-button">
+          <Button variant="ghost" size="icon" className="rounded-sm" onClick={() => navigate('/app')} data-testid="back-button">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
