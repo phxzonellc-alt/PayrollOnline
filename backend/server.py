@@ -1960,18 +1960,29 @@ async def export_pdf(event_id: str, request: Request):
 
 # ---- STARTUP ----
 async def seed_admin():
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
+    """Ensure an admin user exists matching ADMIN_EMAIL/ADMIN_PASSWORD env vars.
+    On every startup we FORCE-sync the password so the env-var values are the
+    source of truth — this gives the operator a foolproof recovery path:
+    set the env vars, redeploy, and the admin is guaranteed to work.
+    """
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").strip().lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    new_hash = hash_password(admin_password)
     existing = await db.users.find_one({"email": admin_email})
     if not existing:
         await db.users.insert_one({
-            "email": admin_email, "password_hash": hash_password(admin_password),
-            "name": "Admin", "role": "admin", "created_at": datetime.now(timezone.utc).isoformat(),
+            "email": admin_email, "password_hash": new_hash,
+            "name": "Admin", "role": "admin",
+            "created_at": datetime.now(timezone.utc).isoformat(),
         })
         logger.info(f"Admin user created: {admin_email}")
-    elif not verify_password(admin_password, existing["password_hash"]):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
-        logger.info("Admin password updated")
+    else:
+        # Force-sync password to env-var value & ensure admin role
+        await db.users.update_one(
+            {"email": admin_email},
+            {"$set": {"password_hash": new_hash, "role": "admin"}},
+        )
+        logger.info(f"Admin user synced from env: {admin_email}")
 
 @app.on_event("startup")
 async def startup():
