@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, FileSpreadsheet, LogOut, Trash2, Users, Copy, BarChart3 } from 'lucide-react';
+import { Plus, FileSpreadsheet, LogOut, Trash2, Users, Copy, BarChart3, Mail } from 'lucide-react';
 
 export default function EventsPage() {
   const { user, logout } = useAuth();
@@ -76,6 +76,11 @@ export default function EventsPage() {
           <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')} data-testid="dashboard-nav-button" className="rounded-sm gap-2 text-xs">
             <BarChart3 className="h-4 w-4" /> Dashboard
           </Button>
+          {isAdmin && (
+            <Button variant="ghost" size="sm" onClick={() => navigate('/waitlist')} data-testid="waitlist-nav-button" className="rounded-sm gap-2 text-xs">
+              <Mail className="h-4 w-4" /> Waitlist
+            </Button>
+          )}
           {isAdmin && (
             <Button variant="ghost" size="sm" onClick={() => navigate('/users')} data-testid="manage-users-button" className="rounded-sm gap-2 text-xs">
               <Users className="h-4 w-4" /> Users

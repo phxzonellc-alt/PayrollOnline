@@ -7,6 +7,7 @@ import EventDetailPage from './pages/EventDetailPage';
 import UsersPage from './pages/UsersPage';
 import DashboardPage from './pages/DashboardPage';
 import LandingPage from './pages/LandingPage';
+import WaitlistPage from './pages/WaitlistPage';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -40,6 +41,7 @@ function App() {
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/events/:id" element={<ProtectedRoute><EventDetailPage /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
+          <Route path="/waitlist" element={<ProtectedRoute><WaitlistPage /></ProtectedRoute>} />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" />

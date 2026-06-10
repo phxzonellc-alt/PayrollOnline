@@ -217,6 +217,15 @@ async def list_waitlist(request: Request):
     rows = await db.waitlist.find({}, {"_id": 0}).sort("created_at", -1).to_list(2000)
     return {"count": len(rows), "entries": rows}
 
+@api_router.delete("/waitlist/{email}")
+async def delete_waitlist_entry(email: str, request: Request):
+    """Admin only: remove a waitlist signup."""
+    await require_admin(request)
+    res = await db.waitlist.delete_one({"email": email.strip().lower()})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"message": "Removed"}
+
 @api_router.get("/auth/me")
 async def get_me(request: Request):
     user = await get_current_user(request)
