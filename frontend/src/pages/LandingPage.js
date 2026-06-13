@@ -197,7 +197,7 @@ export default function LandingPage() {
           <div className="max-w-2xl mb-12">
             <span className="text-[10px] tracking-[0.2em] uppercase font-semibold text-primary">Features</span>
             <h2 className="font-heading text-3xl sm:text-4xl font-black tracking-tight mt-2">Everything event payroll needs. Nothing it doesn&apos;t.</h2>
-            <p className="text-sm text-muted-foreground mt-3">Designed by people who&apos;ve actually created payroll system from written or touring crews, festivals, and trade shows.</p>
+            <p className="text-sm text-muted-foreground mt-3">Designed by people who actually created and managed payroll system for touring crews, festivals, and trade shows.</p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <FeatureCard icon={Layers} title="Event-based payroll" desc="Up to 10 work days per event, 200 employees, full ST/OT/DT breakdown for two rates plus a special rate column." />
